@@ -1,0 +1,42 @@
+# Translation file
+
+#
+# Generic
+#
+
+# Module label 'ModuleLibEuFinConnectorName'
+ModuleLibEuFinConnectorName = LibEuFinConnector
+# Module description 'ModuleLibEuFinConnectorDesc'
+ModuleLibEuFinConnectorDesc = LibEuFinConnector description
+
+#
+# Admin page
+#
+LibEuFinConnectorSetup = LibEuFinConnector setup
+Settings = Settings
+LibEuFinConnectorSetupPage = LibEuFinConnector setup page
+NewSection=New section
+LIBEUFINCONNECTOR_MYPARAM1 = My param 1
+LIBEUFINCONNECTOR_MYPARAM1Tooltip = My param 1 tooltip
+LIBEUFINCONNECTOR_MYPARAM2=My param 2
+LIBEUFINCONNECTOR_MYPARAM2Tooltip=My param 2 tooltip
+
+
+#
+# About page
+#
+About = About
+LibEuFinConnectorAbout = About LibEuFinConnector
+LibEuFinConnectorAboutPage = LibEuFinConnector about page
+
+#
+# Sample page
+#
+LibEuFinConnectorArea = Home LibEuFinConnector
+MyPageName = My page name
+
+#
+# Sample widget
+#
+MyWidget = My widget
+MyWidgetDescription = My widget description
