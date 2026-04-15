@@ -58,7 +58,104 @@ if (!$res) {
 // Libraries
 require_once DOL_DOCUMENT_ROOT."/core/lib/admin.lib.php";
 require_once '../lib/libeufinconnector.lib.php';
+require_once '../lib/nexusconfig.lib.php';
 //require_once "../class/myclass.class.php";
+
+/**
+ * Try to auto-detect the libeufin-nexus binary.
+ *
+ * @return string
+ */
+function libeufinconnectorDetectNexusBinary()
+{
+	$candidates = array(
+		'/usr/bin/libeufin-nexus',
+		'/usr/local/bin/libeufin-nexus',
+	);
+
+	foreach ($candidates as $candidate) {
+		if (is_executable($candidate)) {
+			return $candidate;
+		}
+	}
+
+	return '';
+}
+
+/**
+ * Try to auto-detect the LibEuFin Nexus configuration file.
+ *
+ * @return string
+ */
+function libeufinconnectorDetectNexusConfig()
+{
+	$candidates = array(
+		'/etc/libeufin/libeufin-nexus.conf',
+		'/usr/local/etc/libeufin-nexus.conf',
+	);
+
+	foreach ($candidates as $candidate) {
+		if (is_readable($candidate)) {
+			return $candidate;
+		}
+	}
+
+	return '';
+}
+
+/**
+ * Detect if current OS looks like Debian or Ubuntu.
+ *
+ * @return bool
+ */
+function libeufinconnectorIsDebianFamily()
+{
+	if (!is_readable('/etc/os-release')) {
+		return false;
+	}
+
+	$content = file_get_contents('/etc/os-release');
+	if (!is_string($content) || $content === '') {
+		return false;
+	}
+
+	return (strpos($content, 'ID=debian') !== false
+		|| strpos($content, 'ID=ubuntu') !== false
+		|| strpos($content, 'ID_LIKE=debian') !== false);
+}
+
+/**
+ * Probe the Nexus binary with a harmless command.
+ *
+ * @param string $binaryPath Absolute path to the binary.
+ * @return array{status:string,output:string}
+ */
+function libeufinconnectorProbeNexusBinary($binaryPath)
+{
+	if (empty($binaryPath) || !is_executable($binaryPath)) {
+		return array(
+			'status' => 'missing',
+			'output' => '',
+		);
+	}
+
+	$command = escapeshellarg($binaryPath).' --version 2>&1';
+	$output = shell_exec($command);
+
+	if (!is_string($output) || trim($output) === '') {
+		return array(
+			'status' => 'unresponsive',
+			'output' => '',
+		);
+	}
+
+	$lines = preg_split('/\r\n|\r|\n/', trim($output));
+
+	return array(
+		'status' => 'ok',
+		'output' => (string) ($lines[0] ?? trim($output)),
+	);
+}
 
 /**
  * @var Conf $conf
@@ -93,6 +190,11 @@ if (!$user->admin) {
 	accessforbidden();
 }
 
+$detectedBinary = libeufinconnectorDetectNexusBinary();
+$detectedConfig = libeufinconnectorDetectNexusConfig();
+$binaryValue = getDolGlobalString('LIBEUFINCONNECTOR_NEXUS_BINARY', $detectedBinary);
+$configValue = getDolGlobalString('LIBEUFINCONNECTOR_NEXUS_CONFIG', $detectedConfig);
+
 
 // Set this to 1 to use the factory to manage constants. Warning, the generated module will be compatible with version v15+ only
 $useFormSetup = 1;
@@ -110,82 +212,76 @@ if (!$user->admin) {
 
 // Enter here all parameters in your setup page
 
-// Setup conf for selection of an URL
-$item = $formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM1');
+$item = $formSetup->newItem('LibeufinConnectorSectionRuntime');
+$item->setAsTitle();
+
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_NEXUS_BINARY');
 $item->fieldParams['isMandatory'] = 1;
-$item->fieldAttr['placeholder'] = (empty($_SERVER['HTTPS']) ? 'http://' : 'https://') . $_SERVER['HTTP_HOST'];
+$item->defaultFieldValue = $detectedBinary;
+$item->fieldValue = $binaryValue;
+$item->fieldAttr['placeholder'] = '/usr/bin/libeufin-nexus';
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_NEXUS_BINARYTooltip');
 $item->cssClass = 'minwidth500';
 
-// Setup conf for selection of a simple string input
-$item = $formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM2');
-$item->defaultFieldValue = 'default value';
-$item->fieldAttr['placeholder'] = 'A placeholder here';
-$item->helpText = 'Tooltip text';
-
-// Setup conf for selection of a simple textarea input but we replace the text of field title
-$item = $formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM3');
-$item->nameText = $item->getNameText().' more html text ';
-
-// Setup conf for a selection of a Thirdparty
-$item = $formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM4');
-$item->setAsThirdpartyType();
-
-// Setup conf for a selection of a boolean
-$formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM5')->setAsYesNo();
-
-// Setup conf for a selection of an Email template of type thirdparty
-$formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM6')->setAsEmailTemplate('thirdparty');
-
-// Setup conf for a selection of a secured key
-//$formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM7')->setAsSecureKey();
-
-// Setup conf for a selection of a Product
-$formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM8')->setAsProduct();
-
-// Add a title for a new section
-$formSetup->newItem('NewSection')->setAsTitle();
-
-$TField = array(
-	'test01' => $langs->trans('test01'),
-	'test02' => $langs->trans('test02'),
-	'test03' => $langs->trans('test03'),
-	'test04' => $langs->trans('test04'),
-	'test05' => $langs->trans('test05'),
-	'test06' => $langs->trans('test06'),
-);
-
-// Setup conf for a simple combo list
-$formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM9')->setAsSelect($TField);
-
-// Setup conf for a multiselect combo list
-$item = $formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM10');
-$item->setAsMultiSelect($TField);
-$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_MYPARAM10');
-
-// Setup conf for a category selection
-$formSetup->newItem('LIBEUFINCONNECTOR_CATEGORY_ID_XXX')->setAsCategory('product');
-
-// Setup conf LIBEUFINCONNECTOR_MYPARAM10
-$item = $formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM10');
-$item->setAsColor();
-$item->defaultFieldValue = '#FF0000';
-//$item->fieldValue = '';
-//$item->fieldAttr = array() ; // fields attribute only for compatible fields like input text
-//$item->fieldOverride = false; // set this var to override field output will override $fieldInputOverride and $fieldOutputOverride too
-//$item->fieldInputOverride = false; // set this var to override field input
-//$item->fieldOutputOverride = false; // set this var to override field output
-
-$item = $formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM11')->setAsHtml();
-$item->nameText = $item->getNameText().' more html text ';
-$item->fieldInputOverride = '';
-$item->helpText = $langs->transnoentities('HelpMessage');
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_NEXUS_CONFIG');
+$item->fieldParams['isMandatory'] = 1;
+$item->defaultFieldValue = $detectedConfig;
+$item->fieldValue = $configValue;
+$item->fieldAttr['placeholder'] = '/etc/libeufin/libeufin-nexus.conf';
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_NEXUS_CONFIGTooltip');
 $item->cssClass = 'minwidth500';
 
-$item = $formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM12');
-$item->fieldOverride = "Value forced, can't be modified";
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_USE_LOCAL_NEXUS_CONFIG');
+$item->setAsYesNo();
+$item->defaultFieldValue = '0';
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_USE_LOCAL_NEXUS_CONFIGTooltip');
+
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_NEXUS_COMMAND_PREFIX');
+$item->fieldAttr['placeholder'] = 'docker exec libeufin-nexus';
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_NEXUS_COMMAND_PREFIXTooltip');
 $item->cssClass = 'minwidth500';
 
-//$item = $formSetup->newItem('LIBEUFINCONNECTOR_MYPARAM13')->setAsDate();	// Not yet implemented
+$item = $formSetup->newItem('LibeufinConnectorSectionSync');
+$item->setAsTitle();
+
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_ENABLE_FETCH');
+$item->setAsYesNo();
+$item->defaultFieldValue = '1';
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_ENABLE_FETCHTooltip');
+
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_ENABLE_SUBMIT');
+$item->setAsYesNo();
+$item->defaultFieldValue = '1';
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_ENABLE_SUBMITTooltip');
+
+$item = $formSetup->newItem('LibeufinConnectorSectionMapping');
+$item->setAsTitle();
+
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_BANK_ACCOUNT_ID');
+$item->setAsSelectBankAccount();
+$item->fieldParams['isMandatory'] = 1;
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_BANK_ACCOUNT_IDTooltip');
+$selectedBankAccountId = getDolGlobalString('LIBEUFINCONNECTOR_BANK_ACCOUNT_ID');
+$item->fieldInputOverride = img_picto('', 'bank', 'class="pictofixedwidth"')
+	.$formSetup->form->select_comptes($selectedBankAccountId, 'LIBEUFINCONNECTOR_BANK_ACCOUNT_ID', 0, '', 0, 'onchange="libeufinconnectorLoadBankAccountInfo(this.value)"', 0, '', 1);
+
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_EXPECTED_IBAN');
+$item->fieldAttr['placeholder'] = 'CH9300762011623852957';
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_EXPECTED_IBANTooltip');
+$item->cssClass = 'minwidth500';
+
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_EXPECTED_BIC');
+$item->fieldAttr['placeholder'] = 'POFICHBEXXX';
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_EXPECTED_BICTooltip');
+
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_EXPECTED_CURRENCY');
+$item->fieldAttr['placeholder'] = 'CHF';
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_EXPECTED_CURRENCYTooltip');
+
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_EXPECTED_ACCOUNT_HOLDER');
+$item->fieldAttr['placeholder'] = 'Example Company SA';
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_EXPECTED_ACCOUNT_HOLDERTooltip');
+$item->cssClass = 'minwidth500';
 
 // End of definition of parameters
 
@@ -312,6 +408,50 @@ if ($action == 'updateMask') {
 		$constforval = 'LIBEUFINCONNECTOR_'.strtoupper($tmpobjectkey).'_ADDON_PDF';
 		dolibarr_del_const($db, $constforval, $conf->entity);
 	}
+} elseif ($action == 'getbankaccountinfo') {
+	require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
+
+	$accountId = GETPOST('bank_account_id', 'int');
+
+	top_httphead('application/json');
+
+	if (empty($accountId)) {
+		http_response_code(400);
+		echo json_encode(array(
+			'error' => 'Missing bank account id',
+		));
+		exit;
+	}
+
+	$bankaccount = new Account($db);
+	$result = $bankaccount->fetch($accountId);
+
+	if ($result <= 0) {
+		http_response_code(404);
+		echo json_encode(array(
+			'error' => 'Bank account not found',
+		));
+		exit;
+	}
+
+	echo json_encode(array(
+		'iban' => (string) $bankaccount->iban,
+		'bic' => (string) $bankaccount->bic,
+		'currency' => (string) $bankaccount->currency_code,
+		'account_holder' => (string) (!empty($bankaccount->owner_name) ? $bankaccount->owner_name : $bankaccount->proprio),
+	));
+	exit;
+}
+
+$effectiveNexusConfigPath = libeufinconnectorGetEffectiveNexusConfigPath();
+$nexusConfigStatus = libeufinconnectorReadNexusConfig($effectiveNexusConfigPath);
+$expectedNexusConfig = libeufinconnectorGetExpectedNexusConfig();
+$nexusConfigMismatches = libeufinconnectorCompareNexusConfig($nexusConfigStatus, $expectedNexusConfig);
+
+if ($action === 'update') {
+	if ($nexusConfigStatus['error'] !== '' || !empty($nexusConfigMismatches)) {
+		setEventMessages($langs->trans('LibeufinConnectorNexusConfigNeedsReview'), null, 'warnings');
+	}
 }
 
 $action = 'edit';
@@ -355,6 +495,102 @@ if (!empty($formSetup->items)) {
 	print $formSetup->generateOutput(true);
 	print '<br>';
 }
+
+$nexusConfigUrl = dol_buildpath('/libeufinconnector/admin/nexusconfig.php', 1);
+print '<div class="opacitymedium">';
+if ($nexusConfigStatus['error'] !== '') {
+	print $langs->trans('LibeufinConnectorNexusConfigStatusMissingOrUnreadable', dol_escape_htmltag($effectiveNexusConfigPath));
+} elseif (!empty($nexusConfigMismatches)) {
+	print $langs->trans('LibeufinConnectorNexusConfigStatusMismatch');
+} else {
+	print $langs->trans('LibeufinConnectorNexusConfigStatusMatch');
+}
+print '</div>';
+print '<div class="opacitymedium">';
+if (libeufinconnectorUseLocalNexusConfig()) {
+	print $langs->trans('LibeufinConnectorNexusConfigModeLocal', dol_escape_htmltag($effectiveNexusConfigPath));
+} else {
+	print $langs->trans('LibeufinConnectorNexusConfigModeExternal', dol_escape_htmltag($effectiveNexusConfigPath));
+}
+print '</div>';
+print '<div class="tabsAction">';
+print '<a class="butAction" href="'.$nexusConfigUrl.'">'.$langs->trans('LibeufinConnectorOpenNexusConfig').'</a>';
+print '</div>';
+print '<br>';
+
+print '<script nonce="'.getNonce().'">
+function libeufinconnectorSetFieldValue(fieldId, value) {
+	var field = document.getElementById(fieldId);
+	if (!field) {
+		return;
+	}
+
+	field.value = value || "";
+}
+
+function libeufinconnectorFillExpectedBankFields(data) {
+	if (typeof data !== "object" || data === null) {
+		return;
+	}
+
+	libeufinconnectorSetFieldValue("setup-LIBEUFINCONNECTOR_EXPECTED_IBAN", data.iban || "");
+	libeufinconnectorSetFieldValue("setup-LIBEUFINCONNECTOR_EXPECTED_BIC", data.bic || "");
+	libeufinconnectorSetFieldValue("setup-LIBEUFINCONNECTOR_EXPECTED_CURRENCY", data.currency || "");
+	libeufinconnectorSetFieldValue("setup-LIBEUFINCONNECTOR_EXPECTED_ACCOUNT_HOLDER", data.account_holder || "");
+}
+
+function libeufinconnectorClearExpectedBankFields() {
+	libeufinconnectorFillExpectedBankFields({});
+}
+
+function libeufinconnectorLoadBankAccountInfo(accountId) {
+	if (!accountId || accountId === "-1") {
+		libeufinconnectorClearExpectedBankFields();
+		return;
+	}
+
+	var url = "'.dol_escape_js($_SERVER["PHP_SELF"].'?action=getbankaccountinfo').'" + "&bank_account_id=" + encodeURIComponent(accountId);
+
+	fetch(url, {
+		method: "GET",
+		headers: {
+			"X-Requested-With": "XMLHttpRequest"
+		},
+		credentials: "same-origin"
+	})
+		.then(function(response) {
+			if (!response.ok) {
+				throw new Error("HTTP " + response.status);
+			}
+
+			return response.json();
+		})
+		.then(function(data) {
+			libeufinconnectorFillExpectedBankFields(data);
+		})
+		.catch(function() {
+			libeufinconnectorClearExpectedBankFields();
+		});
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+	var select = document.getElementById("selectLIBEUFINCONNECTOR_BANK_ACCOUNT_ID");
+	if (!select) {
+		return;
+	}
+
+	libeufinconnectorLoadBankAccountInfo(select.value);
+	select.addEventListener("change", function() {
+		libeufinconnectorLoadBankAccountInfo(this.value);
+	});
+
+	if (typeof jQuery !== "undefined") {
+		jQuery(select).on("select2:select select2:clear select2:close", function() {
+			libeufinconnectorLoadBankAccountInfo(this.value);
+		});
+	}
+});
+</script>';
 
 
 foreach ($myTmpObjects as $myTmpObjectKey => $myTmpObjectArray) {

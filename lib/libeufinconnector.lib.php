@@ -44,6 +44,16 @@ function libeufinconnectorAdminPrepareHead()
 	$head[$h][2] = 'settings';
 	$h++;
 
+	$head[$h][0] = dol_buildpath("/libeufinconnector/admin/nexusconfig.php", 1);
+	$head[$h][1] = $langs->trans("LibeufinConnectorNexusConfig");
+	$head[$h][2] = 'nexusconfig';
+	$h++;
+
+	$head[$h][0] = dol_buildpath("/libeufinconnector/admin/nexusoperations.php", 1);
+	$head[$h][1] = $langs->trans("LibeufinConnectorNexusOperations");
+	$head[$h][2] = 'nexusoperations';
+	$h++;
+
 	/*
 	$head[$h][0] = dol_buildpath("/libeufinconnector/admin/myobject_extrafields.php", 1);
 	$head[$h][1] = $langs->trans("ExtraFields");

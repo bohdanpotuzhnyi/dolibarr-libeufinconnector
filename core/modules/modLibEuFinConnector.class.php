@@ -47,14 +47,14 @@ class modLibEuFinConnector extends DolibarrModules
 
 		// Id for module (must be unique).
 		// Use here a free id (See in Home -> System information -> Dolibarr for list of used modules id).
-		$this->numero = 273010; // TODO Go on page https://wiki.dolibarr.org/index.php/List_of_modules_id to reserve an id number for your module
+		$this->numero = 273010;
 
 		// Key text used to identify module (for permissions, menus, etc...)
 		$this->rights_class = 'libeufinconnector';
 
 		// Family can be 'base' (core modules),'crm','financial','hr','projects','products','ecm','technic' (transverse modules),'interface' (link with external tools),'other','...'
 		// It is used to group modules by family in module setup page
-		$this->family = "other";
+		$this->family = "interface";
 
 		// Module position in the family on 2 digits ('01', '10', '20', ...)
 		$this->module_position = '90';
@@ -88,6 +88,7 @@ class modLibEuFinConnector extends DolibarrModules
 		// If file is in module/img directory under name object_pictovalue.png, use this->picto='pictovalue@module'
 		// To use a supported fa-xxx css style of font awesome, use this->picto='xxx'
 		$this->picto = 'account';
+
 
 		// Define some features supported by module (triggers, login, substitutions, menus, css, etc...)
 		$this->module_parts = array(
@@ -137,7 +138,13 @@ class modLibEuFinConnector extends DolibarrModules
 
 		// Data directories to create when module is enabled.
 		// Example: this->dirs = array("/libeufinconnector/temp","/libeufinconnector/subdir");
-		$this->dirs = array("/libeufinconnector/temp");
+		$this->dirs = array(
+			"/libeufinconnector",
+			"/libeufinconnector/config",
+			"/libeufinconnector/keys",
+			"/libeufinconnector/operations",
+			"/libeufinconnector/temp",
+		);
 
 		// Config pages. Put here list of php page, stored into libeufinconnector/admin directory, to use to setup module.
 		$this->config_page_url = array("setup.php@libeufinconnector");

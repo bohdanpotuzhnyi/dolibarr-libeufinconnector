@@ -5,34 +5,111 @@
 #
 
 # Module label 'ModuleLibEuFinConnectorName'
-ModuleLibEuFinConnectorName = LibEuFinConnector
+ModuleLibEuFinConnectorName = LibEuFin Connector
 # Module description 'ModuleLibEuFinConnectorDesc'
-ModuleLibEuFinConnectorDesc = LibEuFinConnector description
+ModuleLibEuFinConnectorDesc = Connect Dolibarr bank accounts to a pre-installed LibEuFin Nexus instance.
 
 #
 # Admin page
 #
-LibEuFinConnectorSetup = LibEuFinConnector setup
+LibEuFinConnectorSetup = LibEuFin Connector setup
 Settings = Settings
-LibEuFinConnectorSetupPage = LibEuFinConnector setup page
-NewSection=New section
-LIBEUFINCONNECTOR_MYPARAM1 = My param 1
-LIBEUFINCONNECTOR_MYPARAM1Tooltip = My param 1 tooltip
-LIBEUFINCONNECTOR_MYPARAM2=My param 2
-LIBEUFINCONNECTOR_MYPARAM2Tooltip=My param 2 tooltip
+LibEuFinConnectorSetupPage = Configure how Dolibarr connects to LibEuFin Nexus, how synchronization is enabled, and which Dolibarr bank account is mapped to the Nexus account.
+LibeufinConnectorNexusConfig = Nexus config
+LibeufinConnectorNexusConfigPage = Review and edit the Nexus configuration needed for ordinary incoming and outgoing customer payments on the EBICS-linked bank account. Empty fields are omitted from the written config.
+LibeufinConnectorNexusOperations = Nexus operations
+LibeufinConnectorNexusOperationsPage = Run LibEuFin Nexus maintenance and synchronization commands with the effective config path, and monitor the latest command output.
+LibeufinConnectorNexusConfigNeedsReview = The configured libeufin-nexus.conf file is missing, unreadable, or does not match the connector settings. Review the Nexus config page.
+LibeufinConnectorNexusConfigStatusMissingOrUnreadable = The configured libeufin-nexus.conf file (%s) is missing or unreadable.
+LibeufinConnectorNexusConfigStatusMismatch = The managed [nexus-ebics] values in libeufin-nexus.conf do not match the connector settings saved in Dolibarr.
+LibeufinConnectorNexusConfigStatusMatch = The managed [nexus-ebics] values in libeufin-nexus.conf match the connector settings saved in Dolibarr.
+LibeufinConnectorNexusConfigModeLocal = The connector is using the module-owned local Nexus config at %s.
+LibeufinConnectorNexusConfigModeExternal = The connector is using the external Nexus config at %s.
+LibeufinConnectorOpenNexusConfig = Review Nexus config
+LibeufinConnectorNexusConfigMode = Config mode
+LibeufinConnectorNexusConfigModeLocalLabel = Module-owned local config
+LibeufinConnectorNexusConfigModeExternalLabel = External config path
+LibeufinConnectorNexusConfigEffectivePath = Effective config path
+LibeufinConnectorNexusConfigSourcePath = External source config path
+LibeufinConnectorNexusConfigLocalPath = Module-owned local config path
+LibeufinConnectorNexusConfigPath = Nexus config path
+LibeufinConnectorNexusConfigReadError = Unable to read the configured libeufin-nexus.conf file (%s).
+LibeufinConnectorNexusConfigSection = Section
+LibeufinConnectorNexusConfigOption = Config option
+LibeufinConnectorNexusConfigCurrent = Current value
+LibeufinConnectorNexusConfigExpected = Expected value
+LibeufinConnectorNexusConfigEditManagedKeys = Edit managed [nexus-ebics] keys
+LibeufinConnectorNexusConfigWriteManagedKeys = Write managed keys to config
+LibeufinConnectorNexusConfigSaved = The managed Nexus configuration keys were written successfully.
+LibeufinConnectorNexusConfigSaveFailed = Failed to write the managed Nexus configuration keys (%s).
+LibeufinConnectorNexusRuntimeProbeOk = Nexus runtime probe succeeded: %s
+LibeufinConnectorNexusRuntimeProbeMissingBinary = Nexus runtime probe cannot run because no binary path is configured.
+LibeufinConnectorNexusRuntimeProbeFailed = Nexus runtime probe failed when running %s.
+LibeufinConnectorNexusOperationsLogDir = Operation log directory
+LibeufinConnectorPostgresProbeOk = PostgreSQL connectivity probe succeeded as the Dolibarr runtime user: %s
+LibeufinConnectorPostgresProbeMissingConfig = PostgreSQL connectivity probe cannot run because [libeufin-nexusdb-postgres] CONFIG is missing from the effective Nexus config.
+LibeufinConnectorPostgresProbeConfigNotReadable = PostgreSQL connectivity probe cannot run because the effective Nexus config is not readable (%s).
+LibeufinConnectorPostgresProbeMissingPsql = PostgreSQL connectivity probe cannot run because psql is not available to the Dolibarr runtime user. Install PostgreSQL client tools together with PostgreSQL.
+LibeufinConnectorPostgresProbeMissingRole = PostgreSQL role "%s" does not exist. Run the suggested command as root, then retry the probe.
+LibeufinConnectorPostgresProbeMissingDatabase = PostgreSQL database "%s" does not exist or is not accessible by role "%s". Run the suggested command as root, then retry the probe.
+LibeufinConnectorPostgresProbeFailed = PostgreSQL connectivity probe failed when running %s.
+LibeufinConnectorNexusOperation = Operation
+LibeufinConnectorNexusOperationRun = Run
+LibeufinConnectorNexusOperationStarted = Started %s with PID %s.
+LibeufinConnectorNexusOperationStartFailed = Failed to start %s (%s).
+LibeufinConnectorNexusOperationUnknown = Unknown Nexus operation.
+LibeufinConnectorNexusOperationStartedAt = Started at
+LibeufinConnectorNexusOperationExitCode = Exit code
+LibeufinConnectorNexusOperationCommand = Command
+LibeufinConnectorNexusOperationLogFile = Log file
+LibeufinConnectorNexusShowLog = Show command and log
+LibeufinConnectorNexusBankKeysNeedAcceptance = Nexus received bank key fingerprints and is waiting for explicit acceptance. Compare the fingerprints with the bank-provided values before accepting.
+LibeufinConnectorNexusAcceptBankKeys = Accept bank keys
+LibeufinConnectorNexusDatabaseNeedsInit = Nexus reached PostgreSQL, but the Nexus database schema is missing. Initialize the Nexus database, then rerun the failed EBICS operation.
+LibeufinConnectorNexusInitializeDatabase = Initialize Nexus database
+LibeufinConnectorNexusOperationStatusNever_run = Never run
+LibeufinConnectorNexusOperationStatusRunning = Running
+LibeufinConnectorNexusOperationStatusSuccess = Success
+LibeufinConnectorNexusOperationStatusFailed = Failed
+LibeufinConnectorNexusOperationStatusUnknown = Unknown
+LibeufinConnectorSectionRuntime = Nexus runtime
+LibeufinConnectorSectionSync = Synchronization
+LibeufinConnectorSectionMapping = Account mapping
+LIBEUFINCONNECTOR_NEXUS_BINARY = Nexus binary path
+LIBEUFINCONNECTOR_NEXUS_BINARYTooltip = Absolute path to the libeufin-nexus executable used by the connector.
+LIBEUFINCONNECTOR_NEXUS_CONFIG = Nexus config path
+LIBEUFINCONNECTOR_NEXUS_CONFIGTooltip = Absolute path to the external libeufin-nexus.conf file to validate and use directly, or to bootstrap the module-owned local config when local mode is enabled.
+LIBEUFINCONNECTOR_USE_LOCAL_NEXUS_CONFIG = Use module-owned local config
+LIBEUFINCONNECTOR_USE_LOCAL_NEXUS_CONFIGTooltip = When enabled, the connector writes and uses its own libeufin-nexus.conf under Dolibarr documents/libeufinconnector/config instead of editing the external file in place.
+LIBEUFINCONNECTOR_NEXUS_COMMAND_PREFIX = Command prefix
+LIBEUFINCONNECTOR_NEXUS_COMMAND_PREFIXTooltip = Optional command prefix used before libeufin-nexus when Nexus is not directly runnable by the web user, for example docker exec libeufin-nexus, podman exec libeufin-nexus, or sudo -u libeufin-nexus.
+LIBEUFINCONNECTOR_ENABLE_FETCH = Enable incoming fetch
+LIBEUFINCONNECTOR_ENABLE_FETCHTooltip = When enabled, incoming transactions are expected to be synchronized from LibEuFin Nexus into Dolibarr.
+LIBEUFINCONNECTOR_ENABLE_SUBMIT = Enable outgoing submit
+LIBEUFINCONNECTOR_ENABLE_SUBMITTooltip = When enabled, outgoing Dolibarr payment intents are expected to be submitted through LibEuFin Nexus.
+LIBEUFINCONNECTOR_BANK_ACCOUNT_ID = Dolibarr bank account
+LIBEUFINCONNECTOR_BANK_ACCOUNT_IDTooltip = Dolibarr bank account mapped to the Nexus account handled by this connector. Selecting an account preloads the expected IBAN, BIC, currency, and account holder fields.
+LIBEUFINCONNECTOR_EXPECTED_IBAN = Expected IBAN
+LIBEUFINCONNECTOR_EXPECTED_IBANTooltip = Optional IBAN used for consistency checks between the Nexus config and the mapped Dolibarr bank account.
+LIBEUFINCONNECTOR_EXPECTED_BIC = Expected BIC
+LIBEUFINCONNECTOR_EXPECTED_BICTooltip = Optional BIC used for consistency checks between the Nexus config and the mapped Dolibarr bank account.
+LIBEUFINCONNECTOR_EXPECTED_CURRENCY = Expected currency
+LIBEUFINCONNECTOR_EXPECTED_CURRENCYTooltip = Optional fiat currency used for consistency checks between Nexus and Dolibarr.
+LIBEUFINCONNECTOR_EXPECTED_ACCOUNT_HOLDER = Expected account holder
+LIBEUFINCONNECTOR_EXPECTED_ACCOUNT_HOLDERTooltip = Optional account holder name used for consistency checks against the Nexus configuration.
 
 
 #
 # About page
 #
 About = About
-LibEuFinConnectorAbout = About LibEuFinConnector
-LibEuFinConnectorAboutPage = LibEuFinConnector about page
+LibEuFinConnectorAbout = About LibEuFin Connector
+LibEuFinConnectorAboutPage = About the LibEuFin Nexus connector for Dolibarr
 
 #
 # Sample page
 #
-LibEuFinConnectorArea = Home LibEuFinConnector
+LibEuFinConnectorArea = Home LibEuFin Connector
 MyPageName = My page name
 
 #
