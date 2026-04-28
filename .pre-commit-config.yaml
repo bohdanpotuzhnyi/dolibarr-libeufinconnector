@@ -11,6 +11,7 @@ repos:
     hooks:
       - id: codespell
         args:
+          - "--ignore-words-list=thirdparty"
           - "--skip=*.po,*.lock,vendor,node_modules"
         stages: [pre-commit]
 
