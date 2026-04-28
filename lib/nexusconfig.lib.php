@@ -155,7 +155,7 @@ function libeufinconnectorGetExpectedNexusConfig()
 		),
 		'libeufin-nexusdb-postgres' => array(
 			'CONFIG' => 'postgres:///libeufin-nexus',
-			'SQL_DIR' => '',
+			'SQL_DIR' => libeufinconnectorDetectNexusSqlDir(),
 		),
 		'nexus-httpd' => array(
 			'SERVE' => 'tcp',
@@ -179,6 +179,29 @@ function libeufinconnectorGetExpectedNexusConfig()
 			'AUTH_METHOD' => 'none',
 		),
 	);
+}
+
+/**
+ * Try to detect the installed LibEuFin SQL directory.
+ *
+ * @return string
+ */
+function libeufinconnectorDetectNexusSqlDir()
+{
+	$candidates = array(
+		'/usr/share/libeufin/sql',
+		'/usr/local/share/libeufin/sql',
+		'/usr/share/libeufin-nexus/sql',
+		'/usr/local/share/libeufin-nexus/sql',
+	);
+
+	foreach ($candidates as $candidate) {
+		if (is_dir($candidate) && is_readable($candidate)) {
+			return $candidate;
+		}
+	}
+
+	return '';
 }
 
 /**
@@ -955,6 +978,77 @@ function libeufinconnectorBuildNexusOperationCommand($operation)
 	$preview = trim('HOME='.libeufinconnectorGetDocumentsDir().' TMPDIR='.libeufinconnectorGetTempDir().' PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin '.($prefix !== '' ? $prefix.' ' : '').$binary.' '.implode(' ', $args));
 
 	return array('ok' => true, 'error' => '', 'command' => $command, 'preview' => $preview);
+}
+
+/**
+ * Compact multi-line command output into a cleaner message.
+ *
+ * @param string $message Raw command output.
+ * @return string
+ */
+function libeufinconnectorCompactCommandMessage($message)
+{
+	$message = trim((string) $message);
+	if ($message === '') {
+		return '';
+	}
+
+	$lines = preg_split('/\r\n|\r|\n/', $message);
+	if (!is_array($lines)) {
+		return $message;
+	}
+
+	$seen = array();
+	$kept = array();
+	foreach ($lines as $line) {
+		$line = trim((string) $line);
+		if ($line === '') {
+			continue;
+		}
+		if (isset($seen[$line])) {
+			continue;
+		}
+		$seen[$line] = true;
+		$kept[] = $line;
+	}
+
+	return implode("\n", $kept);
+}
+
+/**
+ * Run a supported Nexus operation synchronously and capture its output.
+ *
+ * @param string $operation Operation code.
+ * @return array{ok:bool,error:string,output:string,preview:string,code:int}
+ */
+function libeufinconnectorRunNexusOperationNow($operation)
+{
+	$tempDirResult = libeufinconnectorEnsureTempDir();
+	if (empty($tempDirResult['ok'])) {
+		return array('ok' => false, 'error' => $tempDirResult['error'], 'output' => '', 'preview' => '', 'code' => 1);
+	}
+	$keyDirResult = libeufinconnectorEnsureLocalNexusKeysDir();
+	if (empty($keyDirResult['ok'])) {
+		return array('ok' => false, 'error' => $keyDirResult['error'], 'output' => '', 'preview' => '', 'code' => 1);
+	}
+
+	$build = libeufinconnectorBuildNexusOperationCommand($operation);
+	if (empty($build['ok'])) {
+		return array('ok' => false, 'error' => $build['error'], 'output' => '', 'preview' => '', 'code' => 1);
+	}
+
+	$output = array();
+	$returnCode = 1;
+	@exec($build['command'].' 2>&1', $output, $returnCode);
+	$rawOutput = trim(implode("\n", $output));
+
+	return array(
+		'ok' => ($returnCode === 0),
+		'error' => ($returnCode === 0 ? '' : libeufinconnectorCompactCommandMessage($rawOutput)),
+		'output' => libeufinconnectorCompactCommandMessage($rawOutput),
+		'preview' => $build['preview'],
+		'code' => $returnCode,
+	);
 }
 
 /**

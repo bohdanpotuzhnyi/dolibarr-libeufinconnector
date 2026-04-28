@@ -1,0 +1,20 @@
+[
+    {
+        "amount": "12.50",
+        "currency": "CHF",
+        "name": "Example Supplier One",
+        "iban": "CH4431999123000889012",
+        "bic": "POFICHBEXXX",
+        "subject": "Test payment 1",
+        "end_to_end_id": "LFC-TEST-20260421-001"
+    },
+    {
+        "amount": "24.90",
+        "currency": "CHF",
+        "name": "Example Supplier Two",
+        "iban": "CH5604835012345678009",
+        "bic": "POFICHBEXXX",
+        "subject": "Test payment 2",
+        "end_to_end_id": "LFC-TEST-20260421-002"
+    }
+]

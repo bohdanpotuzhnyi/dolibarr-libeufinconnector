@@ -4,6 +4,18 @@
 
 Description of the module...
 
+### CLI batch payment helper
+
+For small direct outgoing batches that should bypass Dolibarr invoices and payments, use:
+
+```shell
+php htdocs/custom/libeufinconnector/scripts/postfinance-batch-payments.php \
+  --file=htdocs/custom/libeufinconnector/scripts/postfinance-batch-payments.example.json \
+  --dry-run
+```
+
+Add `--submit` to run `libeufin-nexus ebics-submit --transient` after all payments were initiated successfully.
+
 <!--
 ![Screenshot libeufinconnector](img/screenshot_libeufinconnector.png?raw=true "LibEuFinConnector"){imgmd}
 -->

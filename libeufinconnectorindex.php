@@ -61,7 +61,12 @@ if (!$res) {
 	die("Include of main fails");
 }
 
+require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/html.formfile.class.php';
+require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
+require_once __DIR__.'/lib/libeufinconnector.lib.php';
+require_once __DIR__.'/lib/nexusconfig.lib.php';
+require_once __DIR__.'/lib/transactionstaging.lib.php';
 
 /**
  * @var Conf $conf
@@ -76,14 +81,10 @@ $langs->loadLangs(array("libeufinconnector@libeufinconnector"));
 
 $action = GETPOST('action', 'aZ09');
 
-$now = dol_now();
-$max = getDolGlobalInt('MAIN_SIZE_SHORTLIST_LIMIT', 5);
-
 // Security check - Protection if external user
 $socid = GETPOSTINT('socid');
 if (!empty($user->socid) && $user->socid > 0) {
-	$action = '';
-	$socid = $user->socid;
+	accessforbidden();
 }
 
 // Initialize a technical object to manage hooks. Note that conf->hooks_modules contains array
@@ -114,146 +115,117 @@ if (!empty($user->socid) && $user->socid > 0) {
 /*
  * View
  */
+$stats = libeufinconnectorGetTransactionStats($db);
+$effectiveConfigPath = libeufinconnectorGetEffectiveNexusConfigPath();
+$fetchEnabled = ((int) getDolGlobalInt('LIBEUFINCONNECTOR_ENABLE_FETCH') === 1);
+$submitEnabled = ((int) getDolGlobalInt('LIBEUFINCONNECTOR_ENABLE_SUBMIT') === 1);
+$configuredBankAccountId = (int) getDolGlobalInt('LIBEUFINCONNECTOR_BANK_ACCOUNT_ID');
+$bankAccountLabel = $langs->trans('None');
 
-$form = new Form($db);
-$formfile = new FormFile($db);
+if ($configuredBankAccountId > 0) {
+	$bankAccount = new Account($db);
+	if ($bankAccount->fetch($configuredBankAccountId) > 0) {
+		$parts = array();
+		if (!empty($bankAccount->ref)) {
+			$parts[] = $bankAccount->ref;
+		}
+		if (!empty($bankAccount->label)) {
+			$parts[] = $bankAccount->label;
+		}
+		if (!empty($bankAccount->iban)) {
+			$parts[] = $bankAccount->iban;
+		}
+		$bankAccountLabel = implode(' - ', $parts);
+	}
+}
 
-llxHeader("", $langs->trans("LibEuFinConnectorArea"), '', '', 0, 0, '', '', '', 'mod-libeufinconnector page-index');
-
-print load_fiche_titre($langs->trans("LibEuFinConnectorArea"), '', 'libeufinconnector.png@libeufinconnector');
-
-print '<div class="fichecenter"><div class="fichethirdleft">';
-
-
-/* BEGIN MODULEBUILDER DRAFT MYOBJECT
-// Draft MyObject
-if (isModEnabled('libeufinconnector') && $user->hasRight('libeufinconnector', 'read')) {
-	$langs->load("orders");
-
-	$sql = "SELECT c.rowid, c.ref, c.ref_client, c.total_ht, c.tva as total_tva, c.total_ttc, s.rowid as socid, s.nom as name, s.client, s.canvas";
-	$sql.= ", s.code_client";
-	$sql.= " FROM ".$db->prefix()."commande as c";
-	$sql.= ", ".$db->prefix()."societe as s";
-	$sql.= " WHERE c.fk_soc = s.rowid";
-	$sql.= " AND c.fk_statut = 0";
-	$sql.= " AND c.entity IN (".getEntity('commande').")";
-	if ($socid)	$sql.= " AND c.fk_soc = ".((int) $socid);
+$recentRows = array();
+if (!empty($stats['installed'])) {
+	$sql = "SELECT rowid, transaction_date, datec, direction, transaction_status, amount, currency,";
+	$sql .= " counterparty_name, external_transaction_id";
+	$sql .= " FROM ".MAIN_DB_PREFIX."libeufinconnector_transaction";
+	$sql .= " WHERE entity = ".((int) $conf->entity);
+	$sql .= " ORDER BY transaction_date DESC, rowid DESC";
+	$sql .= $db->plimit(10, 0);
 
 	$resql = $db->query($sql);
-	if ($resql)
-	{
-		$total = 0;
-		$num = $db->num_rows($resql);
-
-		print '<table class="noborder centpercent">';
-		print '<tr class="liste_titre">';
-		print '<th colspan="3">'.$langs->trans("DraftMyObjects").($num?'<span class="badge marginleftonlyshort">'.$num.'</span>':'').'</th></tr>';
-
-		$var = true;
-		if ($num > 0)
-		{
-			$i = 0;
-			while ($i < $num)
-			{
-
-				$obj = $db->fetch_object($resql);
-				print '<tr class="oddeven"><td class="nowrap">';
-
-				$myobjectstatic->id=$obj->rowid;
-				$myobjectstatic->ref=$obj->ref;
-				$myobjectstatic->ref_client=$obj->ref_client;
-				$myobjectstatic->total_ht = $obj->total_ht;
-				$myobjectstatic->total_tva = $obj->total_tva;
-				$myobjectstatic->total_ttc = $obj->total_ttc;
-
-				print $myobjectstatic->getNomUrl(1);
-				print '</td>';
-				print '<td class="nowrap">';
-				print '</td>';
-				print '<td class="right" class="nowrap">'.price($obj->total_ttc).'</td></tr>';
-				$i++;
-				$total += $obj->total_ttc;
-			}
-			if ($total>0)
-			{
-
-				print '<tr class="liste_total"><td>'.$langs->trans("Total").'</td><td colspan="2" class="right">'.price($total)."</td></tr>";
-			}
+	if ($resql) {
+		while ($obj = $db->fetch_object($resql)) {
+			$recentRows[] = $obj;
 		}
-		else
-		{
-
-			print '<tr class="oddeven"><td colspan="3" class="opacitymedium">'.$langs->trans("NoOrder").'</td></tr>';
-		}
-		print "</table><br>";
-
 		$db->free($resql);
 	}
-	else
-	{
-		dol_print_error($db);
-	}
 }
-END MODULEBUILDER DRAFT MYOBJECT */
 
+llxHeader("", $langs->trans("LibeufinConnectorHome"), '', '', 0, 0, '', '', '', 'mod-libeufinconnector page-index');
 
-print '</div><div class="fichetwothirdright">';
+print load_fiche_titre($langs->trans("LibeufinConnectorHome"), '', 'home');
+print '<span class="opacitymedium">'.$langs->trans("LibeufinConnectorHomePage").'</span><br><br>';
 
+if (empty($stats['installed'])) {
+	print '<div class="warning">'.$langs->trans('LibeufinConnectorTransactionTableMissing').'</div>';
+} else {
+	print '<table class="noborder centpercent">';
+	print '<tr class="liste_titre"><td colspan="2">'.$langs->trans('LibeufinConnectorTransactionStats').'</td></tr>';
+	$statLabels = array(
+		'total' => 'LibeufinConnectorTotalStaged',
+		'incoming' => 'LibeufinConnectorTransactionDirectionIncoming',
+		'outgoing' => 'LibeufinConnectorTransactionDirectionOutgoing',
+		'new' => 'LibeufinConnectorTransactionStatusNew',
+		'imported' => 'LibeufinConnectorTransactionStatusImported',
+		'matched' => 'LibeufinConnectorTransactionStatusMatched',
+		'submitted' => 'LibeufinConnectorTransactionStatusSubmitted',
+		'booked' => 'LibeufinConnectorTransactionStatusBooked',
+		'failed' => 'LibeufinConnectorTransactionStatusFailed',
+		'ignored' => 'LibeufinConnectorTransactionStatusIgnored',
+	);
+	foreach ($statLabels as $key => $translationKey) {
+		print '<tr class="oddeven"><td>'.$langs->trans($translationKey).'</td><td class="right">'.((int) $stats[$key]).'</td></tr>';
+	}
+	print '</table><br>';
 
-/* BEGIN MODULEBUILDER LASTMODIFIED MYOBJECT
-// Last modified myobject
-if (isModEnabled('libeufinconnector') && $user->hasRight('libeufinconnector', 'read')) {
-	$sql = "SELECT s.rowid, s.ref, s.label, s.date_creation, s.tms";
-	$sql.= " FROM ".$db->prefix()."libeufinconnector_myobject as s";
-	$sql.= " WHERE s.entity IN (".getEntity($myobjectstatic->element).")";
-	//if ($socid)	$sql.= " AND s.rowid = $socid";
-	$sql .= " ORDER BY s.tms DESC";
-	$sql .= $db->plimit($max, 0);
+	print '<table class="noborder centpercent">';
+	print '<tr class="liste_titre"><td colspan="5">'.$langs->trans('LibeufinConnectorRecentTransactions').'</td></tr>';
 
-	$resql = $db->query($sql);
-	if ($resql)
-	{
-		$num = $db->num_rows($resql);
-		$i = 0;
-
-		print '<table class="noborder centpercent">';
+	if (empty($recentRows)) {
+		print '<tr class="oddeven"><td colspan="5" class="opacitymedium">'.$langs->trans('LibeufinConnectorTransactionNoData').'</td></tr>';
+	} else {
 		print '<tr class="liste_titre">';
-		print '<th colspan="2">';
-		print $langs->trans("BoxTitleLatestModifiedMyObjects", $max);
-		print '</th>';
-		print '<th class="right">'.$langs->trans("DateModificationShort").'</th>';
+		print '<td>'.$langs->trans('Date').'</td>';
+		print '<td>'.$langs->trans('LibeufinConnectorTransactionFilterDirection').'</td>';
+		print '<td>'.$langs->trans('Status').'</td>';
+		print '<td class="right">'.$langs->trans('Amount').'</td>';
+		print '<td>'.$langs->trans('LibeufinConnectorTransactionCounterparty').'</td>';
 		print '</tr>';
-		if ($num)
-		{
-			while ($i < $num)
-			{
-				$objp = $db->fetch_object($resql);
-
-				$myobjectstatic->id=$objp->rowid;
-				$myobjectstatic->ref=$objp->ref;
-				$myobjectstatic->label=$objp->label;
-				$myobjectstatic->status = $objp->status;
-
-				print '<tr class="oddeven">';
-				print '<td class="nowrap">'.$myobjectstatic->getNomUrl(1).'</td>';
-				print '<td class="right nowrap">';
-				print "</td>";
-				print '<td class="right nowrap">'.dol_print_date($db->jdate($objp->tms), 'day')."</td>";
-				print '</tr>';
-				$i++;
-			}
-
-			$db->free($resql);
-		} else {
-			print '<tr class="oddeven"><td colspan="3" class="opacitymedium">'.$langs->trans("None").'</td></tr>';
+		foreach ($recentRows as $row) {
+			$dateValue = !empty($row->transaction_date) ? $row->transaction_date : $row->datec;
+			$detailUrl = dol_buildpath('/libeufinconnector/transaction_card.php?id='.((int) $row->rowid).'&mainmenu=libeufinconnector&leftmenu=libeufinconnector_transactions', 1);
+			print '<tr class="oddeven">';
+			print '<td><a href="'.$detailUrl.'">'.dol_print_date($db->jdate($dateValue), 'dayhour').'</a></td>';
+			print '<td>'.dol_escape_htmltag($langs->trans('LibeufinConnectorTransactionDirection'.ucfirst($row->direction))).'</td>';
+			print '<td>'.dol_escape_htmltag($langs->trans('LibeufinConnectorTransactionStatus'.ucfirst($row->transaction_status))).'</td>';
+			print '<td class="right">'.price((float) $row->amount).' '.dol_escape_htmltag($row->currency).'</td>';
+			print '<td><a href="'.$detailUrl.'">'.dol_escape_htmltag($row->counterparty_name !== '' ? $row->counterparty_name : $row->external_transaction_id).'</a></td>';
+			print '</tr>';
 		}
-		print "</table><br>";
 	}
+	print '</table><br>';
+	print '<div class="right"><a class="button" href="'.dol_buildpath('/libeufinconnector/transactions.php?mainmenu=libeufinconnector&leftmenu=libeufinconnector_transactions', 1).'">'.$langs->trans('LibeufinConnectorOpenTransactions').'</a></div>';
 }
-*/
 
-print '</div></div>';
+print '<br>';
+print '<details class="underbanner clearboth marginbottomonly">';
+print '<summary><strong>'.$langs->trans('LibeufinConnectorConfiguration').'</strong></summary>';
+print '<div class="marginbottomonly margintoponly">';
+print '<table class="noborder centpercent">';
+print '<tr class="oddeven"><td class="titlefield">'.$langs->trans('LibeufinConnectorMappedBankAccount').'</td><td>'.dol_escape_htmltag($bankAccountLabel).'</td></tr>';
+print '<tr class="oddeven"><td class="titlefield">'.$langs->trans('LibeufinConnectorConfigPathSummary').'</td><td>'.dol_escape_htmltag($effectiveConfigPath !== '' ? $effectiveConfigPath : $langs->trans('None')).'</td></tr>';
+print '<tr class="oddeven"><td class="titlefield">'.$langs->trans('LibeufinConnectorFetchSummary').'</td><td>'.dol_escape_htmltag($langs->trans($fetchEnabled ? 'LibeufinConnectorEnabledLabel' : 'LibeufinConnectorDisabledLabel')).'</td></tr>';
+print '<tr class="oddeven"><td class="titlefield">'.$langs->trans('LibeufinConnectorSubmitSummary').'</td><td>'.dol_escape_htmltag($langs->trans($submitEnabled ? 'LibeufinConnectorEnabledLabel' : 'LibeufinConnectorDisabledLabel')).'</td></tr>';
+print '</table>';
+print '</div>';
+print '</details>';
 
-// End of page
 llxFooter();
 $db->close();
+exit;

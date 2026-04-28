@@ -334,7 +334,7 @@ class modLibEuFinConnector extends DolibarrModules
 			'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle"'),
 			'mainmenu' => 'libeufinconnector',
 			'leftmenu' => '',
-			'url' => '/libeufinconnector/libeufinconnectorindex.php',
+			'url' => '/libeufinconnector/libeufinconnectorindex.php?mainmenu=libeufinconnector',
 			'langs' => 'libeufinconnector@libeufinconnector', // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
 			'position' => 1000 + $r,
 			'enabled' => 'isModEnabled("libeufinconnector")', // Define condition to show or hide menu entry. Use 'isModEnabled("libeufinconnector")' if entry must be visible if module is enabled.
@@ -343,6 +343,54 @@ class modLibEuFinConnector extends DolibarrModules
 			'user' => 2, // 0=Menu for internal users, 1=external users, 2=both
 		);
 		/* END MODULEBUILDER TOPMENU */
+
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=libeufinconnector',
+			'type' => 'left',
+			'titre' => 'LibeufinConnectorHome',
+			'prefix' => img_picto('', 'home', 'class="paddingright pictofixedwidth valignmiddle"'),
+			'mainmenu' => 'libeufinconnector',
+			'leftmenu' => 'libeufinconnector_home',
+			'url' => '/libeufinconnector/libeufinconnectorindex.php?mainmenu=libeufinconnector&leftmenu=libeufinconnector_home',
+			'langs' => 'libeufinconnector@libeufinconnector',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("libeufinconnector")',
+			'perms' => '1',
+			'target' => '',
+			'user' => 2,
+		);
+
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=libeufinconnector',
+			'type' => 'left',
+			'titre' => 'LibeufinConnectorTransactions',
+			'prefix' => img_picto('', 'bank', 'class="paddingright pictofixedwidth valignmiddle"'),
+			'mainmenu' => 'libeufinconnector',
+			'leftmenu' => 'libeufinconnector_transactions',
+			'url' => '/libeufinconnector/transactions.php?mainmenu=libeufinconnector&leftmenu=libeufinconnector_transactions',
+			'langs' => 'libeufinconnector@libeufinconnector',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("libeufinconnector")',
+			'perms' => '1',
+			'target' => '',
+			'user' => 2,
+		);
+
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=libeufinconnector',
+			'type' => 'left',
+			'titre' => 'Settings',
+			'prefix' => img_picto('', 'setup', 'class="paddingright pictofixedwidth valignmiddle"'),
+			'mainmenu' => 'libeufinconnector',
+			'leftmenu' => 'libeufinconnector_settings',
+			'url' => '/libeufinconnector/admin/setup.php?mainmenu=libeufinconnector&leftmenu=libeufinconnector_settings',
+			'langs' => 'libeufinconnector@libeufinconnector',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("libeufinconnector")',
+			'perms' => '$user->admin',
+			'target' => '',
+			'user' => 2,
+		);
 
 		/* BEGIN MODULEBUILDER LEFTMENU MYOBJECT */
 		/*
