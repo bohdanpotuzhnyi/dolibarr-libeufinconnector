@@ -1,0 +1,31 @@
+name: CI Podman
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  podman-test-suite:
+    name: Run Podman test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman --version
+
+      - name: Ensure scripts are executable
+        run: chmod +x devtools/podman/*.sh devtools/git-hooks/install.sh .githooks/pre-commit .githooks/pre-push
+
+      - name: Run libeufinconnector suite
+        run: ./devtools/podman/run-tests-podman.sh --local-module

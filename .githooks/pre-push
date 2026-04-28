@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+set -eu
+
+if command -v pre-commit >/dev/null 2>&1; then
+    exec pre-commit run --hook-stage pre-push --config .pre-commit-config.yaml --all-files
+elif command -v python3 >/dev/null 2>&1; then
+    exec python3 -m pre_commit hook-impl --config=.pre-commit-config.yaml --hook-type=pre-push --hook-dir .githooks -- "$@"
+else
+    echo "pre-commit is not installed. Run devtools/git-hooks/install.sh first." >&2
+    exit 1
+fi

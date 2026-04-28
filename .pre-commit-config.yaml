@@ -1,0 +1,38 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        args:
+          - "--skip=*.po,*.lock,vendor,node_modules"
+        stages: [pre-commit]
+
+  - repo: local
+    hooks:
+      - id: php-lint
+        name: PHP syntax lint
+        entry: bash -lc 'status=0; for file in "$@"; do php -l "$file" >/dev/null || status=$?; done; exit $status' --
+        language: system
+        types: [php]
+        stages: [pre-commit]
+
+      - id: shell-lint
+        name: Shell syntax lint
+        entry: bash -lc 'status=0; for file in "$@"; do bash -n "$file" || status=$?; done; exit $status' --
+        language: system
+        files: ^(devtools/.*\.sh|\.githooks/(pre-commit|pre-push))$
+        stages: [pre-commit]
+
+      - id: podman-test-suite
+        name: Podman test suite
+        entry: ./devtools/podman/run-tests-podman.sh --local-module
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

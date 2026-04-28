@@ -11,4 +11,3 @@ directory a .png file called *object_libeufinconnector.png* (16x16 or 32x32 pixe
 
 If the picto of an object is an image (property $picto of the object.class.php has been set to 'myobject.png@libeufinconnector', then you can put into this
 directory a .png file called *object_myobject.png* (16x16 or 32x32 pixels)
-
