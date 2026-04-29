@@ -1,4 +1,4 @@
-# LIBEUFINCONNECTOR FOR [DOLIBARR ERP & CRM](https://www.dolibarr.org)
+# LibEuFin Connector for [Dolibarr ERP & CRM](https://www.dolibarr.org)
 
 ## Features
 
