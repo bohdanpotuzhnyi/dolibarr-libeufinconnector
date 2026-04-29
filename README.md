@@ -2,19 +2,12 @@
 
 ## Features
 
-Description of the module...
+LibEuFin Connector is a Dolibarr module for importing, matching, and staging LibEuFin/Nexus bank transactions.
 
-### CLI batch payment helper
+It covers incoming customer payments, incoming supplier refunds, outgoing supplier payments, and outgoing customer
+refunds, while keeping deterministic transaction records for reconciliation and deduplication.
 
-For small direct outgoing batches that should bypass Dolibarr invoices and payments, use:
-
-```shell
-php htdocs/custom/libeufinconnector/scripts/postfinance-batch-payments.php \
-  --file=htdocs/custom/libeufinconnector/scripts/postfinance-batch-payments.example.json \
-  --dry-run
-```
-
-Add `--submit` to run `libeufin-nexus ebics-submit --transient` after all payments were initiated successfully.
+Project repository: [bohdanpotuzhnyi/dolibarr-libeufinconnector](https://github.com/bohdanpotuzhnyi/dolibarr-libeufinconnector).
 
 <!--
 ![Screenshot libeufinconnector](img/screenshot_libeufinconnector.png?raw=true "LibEuFinConnector"){imgmd}
@@ -40,52 +33,13 @@ There is a [Transifex project](https://transifex.com/projects/p/dolibarr-module-
 Prerequisites: You must have Dolibarr ERP & CRM software installed. You can download it from [Dolistore.org](https://www.dolibarr.org).
 You can also get a ready-to-use instance in the cloud from https://saas.dolibarr.org
 
+For full functionality, make sure `libeufin-nexus` is installed.
+
 
 ### From the ZIP file and GUI interface
 
-If the module is a ready-to-deploy zip file, so with a name `module_xxx-version.zip` (e.g., when downloading it from a marketplace like [Dolistore](https://www.dolistore.com)),
-go to menu `Home> Setup> Modules> Deploy external module` and upload the zip file.
-
-<!--
-
-Note: If this screen tells you that there is no "custom" directory, check that your setup is correct:
-
-- In your Dolibarr installation directory, edit the `htdocs/conf/conf.php` file and check that following lines are not commented:
-
-    ```php
-    //$dolibarr_main_url_root_alt ...
-    //$dolibarr_main_document_root_alt ...
-    ```
-
-- Uncomment them if necessary (delete the leading `//`) and assign the proper value according to your Dolibarr installation
-
-    For example :
-
-    - UNIX:
-        ```php
-        $dolibarr_main_url_root_alt = '/custom';
-        $dolibarr_main_document_root_alt = '/var/www/Dolibarr/htdocs/custom';
-        ```
-
-    - Windows:
-        ```php
-        $dolibarr_main_url_root_alt = '/custom';
-        $dolibarr_main_document_root_alt = 'C:/My Web Sites/Dolibarr/htdocs/custom';
-        ```
--->
-
-<!--
-
-### From a GIT repository
-
-Clone the repository in `$dolibarr_main_document_root_alt/libeufinconnector`
-
-```shell
-cd ....../custom
-git clone git@github.com:gitlogin/libeufinconnector.git libeufinconnector
-```
-
--->
+If the module is a ready-to-deploy zip file, so with a name `module_xxx-version.zip` (e.g., when downloading it from a
+marketplace like [Dolistore](https://www.dolistore.com)), go to menu `Home> Setup> Modules> Deploy external module` and upload the zip file.
 
 ### Final steps
 
@@ -94,8 +48,7 @@ Using your browser:
   - Log into Dolibarr as a super-administrator
   - Go to "Setup"> "Modules"
   - You should now be able to find and enable the module
-
-
+  - Go to module setup to finish configuration
 
 ## Licenses
 

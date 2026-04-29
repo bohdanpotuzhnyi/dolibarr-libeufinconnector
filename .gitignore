@@ -28,7 +28,8 @@
 .DS_Store
 
 documents/
-build/
+build/*
+!build/buildzip.php
 tmp/
 test-output/
 node_modules/
