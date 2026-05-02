@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpdocumentor configVersion="3"
+			   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+			   xsi:noNamespaceSchemaLocation="https://www.phpdoc.org/phpDocumentor.xsd">
+
+	<paths>
+		<output>build/docs</output>
+		<cache>build/cache/phpdoc</cache>
+	</paths>
+
+	<settings>
+		<template><name>default</name></template>
+		<setting name="graphs.enabled" value="true"/>
+	</settings>
+
+	<versions>
+		<version number="main">
+			<api>
+				<!-- point DSN to the MODULE ROOT -->
+				<source dsn="./../../">
+					<!-- folders to scan (relative to DSN) -->
+					<path>.</path>
+					<path>class</path>
+					<path>lib</path>
+					<path>core</path>
+					<path>admin</path>
+					<path>libeufintransaction</path>
+					<path>scripts</path>
+					<path>tutorial</path>
+				</source>
+
+				<!-- ignore only what we truly must -->
+				<ignore hidden="true" symlinks="true">
+					<path>vendor</path>
+					<path>build</path>
+					<path>devtools/phpdoc</path>
+					<path>.github</path>
+					<path>img</path>
+					<path>sql</path>
+					<path>test</path>
+					<path>*.blade.php</path>
+					<path>*.phar</path>
+				</ignore>
+			</api>
+		</version>
+	</versions>
+</phpdocumentor>
