@@ -47,6 +47,7 @@ $listOfModuleContent = [
 	'scripts',
 	'sql',
 	'tpl',
+	'tutorial',
 	'*.md',
 	'*.json',
 	'*.php',

@@ -27,7 +27,35 @@ if (PHP_SAPI !== 'cli') {
 	exit(1);
 }
 
-require_once __DIR__.'/../../../master.inc.php';
+$res = 0;
+$scriptFilename = empty($_SERVER['SCRIPT_FILENAME']) ? '' : $_SERVER['SCRIPT_FILENAME'];
+$currentFile = realpath(__FILE__);
+$i = strlen($scriptFilename) - 1;
+$j = strlen($currentFile) - 1;
+while ($i > 0 && $j > 0 && isset($scriptFilename[$i]) && isset($currentFile[$j]) && $scriptFilename[$i] == $currentFile[$j]) {
+	$i--;
+	$j--;
+}
+if (!$res && $i > 0 && file_exists(substr($scriptFilename, 0, ($i + 1))."/master.inc.php")) {
+	$res = @include substr($scriptFilename, 0, ($i + 1))."/master.inc.php";
+}
+if (!$res && $i > 0 && file_exists(dirname(substr($scriptFilename, 0, ($i + 1)))."/master.inc.php")) {
+	$res = @include dirname(substr($scriptFilename, 0, ($i + 1)))."/master.inc.php";
+}
+if (!$res && file_exists("../../master.inc.php")) {
+	$res = @include "../../master.inc.php";
+}
+if (!$res && file_exists("../../../master.inc.php")) {
+	$res = @include "../../../master.inc.php";
+}
+if (!$res && file_exists("../../../../master.inc.php")) {
+	$res = @include "../../../../master.inc.php";
+}
+if (!$res) {
+	fwrite(STDERR, "Include of master fails\n");
+	exit(1);
+}
+
 require_once __DIR__.'/../lib/nexusconfig.lib.php';
 
 /**

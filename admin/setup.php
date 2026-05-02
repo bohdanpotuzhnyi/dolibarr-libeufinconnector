@@ -254,6 +254,14 @@ $item->setAsYesNo();
 $item->defaultFieldValue = '1';
 $item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_ENABLE_SUBMITTooltip');
 
+$item = $formSetup->newItem('LibeufinConnectorSectionTutorial');
+$item->setAsTitle();
+
+$item = $formSetup->newItem('LIBEUFINCONNECTOR_TUTORIAL_ENABLE');
+$item->setAsYesNo();
+$item->defaultFieldValue = '0';
+$item->helpText = $langs->transnoentities('LIBEUFINCONNECTOR_TUTORIAL_ENABLETooltip');
+
 $item = $formSetup->newItem('LibeufinConnectorSectionMapping');
 $item->setAsTitle();
 
@@ -443,7 +451,16 @@ if ($action == 'updateMask') {
 	exit;
 }
 
-$effectiveNexusConfigPath = libeufinconnectorGetEffectiveNexusConfigPath();
+$currentBinaryValue = trim((string) getDolGlobalString('LIBEUFINCONNECTOR_NEXUS_BINARY', $binaryValue));
+if ($currentBinaryValue === '') {
+	$currentBinaryValue = $binaryValue;
+}
+$currentCommandPrefix = trim((string) getDolGlobalString('LIBEUFINCONNECTOR_NEXUS_COMMAND_PREFIX'));
+$currentConfigValue = trim((string) getDolGlobalString('LIBEUFINCONNECTOR_NEXUS_CONFIG', $configValue));
+if ($currentConfigValue === '') {
+	$currentConfigValue = $configValue;
+}
+$effectiveNexusConfigPath = libeufinconnectorUseLocalNexusConfig() ? libeufinconnectorGetLocalNexusConfigPath() : $currentConfigValue;
 $nexusConfigStatus = libeufinconnectorReadNexusConfig($effectiveNexusConfigPath);
 $expectedNexusConfig = libeufinconnectorGetExpectedNexusConfig();
 $nexusConfigMismatches = libeufinconnectorCompareNexusConfig($nexusConfigStatus, $expectedNexusConfig);
@@ -480,6 +497,22 @@ print dol_get_fiche_head($head, 'settings', $langs->trans($title), -1, "libeufin
 // Setup page goes here
 echo '<span class="opacitymedium">'.$langs->trans("LibEuFinConnectorSetupPage").'</span><br><br>';
 
+$nexusConfigUrl = dol_buildpath('/libeufinconnector/admin/nexusconfig.php', 1);
+$nexusManualUrl = 'https://docs.taler.net/libeufin/nexus-manual.html';
+$nexusBinaryMissing = ($currentBinaryValue === '' || ($currentCommandPrefix === '' && !is_executable($currentBinaryValue)));
+if ($nexusBinaryMissing) {
+	print '<div class="warning">';
+	if ($currentBinaryValue === '') {
+		print $langs->trans('LibeufinConnectorNexusBinaryMissing');
+	} else {
+		print $langs->trans('LibeufinConnectorNexusBinaryNotExecutable', dol_escape_htmltag($currentBinaryValue));
+	}
+	if (libeufinconnectorIsDebianFamily()) {
+		print '<br>'.$langs->trans('LibeufinConnectorNexusBinaryInstallDebian');
+	}
+	print '<br>'.$langs->trans('LibeufinConnectorNexusManualLink', '<a href="'.$nexusManualUrl.'" target="_blank" rel="noopener noreferrer">', '</a>');
+	print '</div><br>';
+}
 
 /*if ($action == 'edit') {
  print $formSetup->generateOutput(true);
@@ -496,7 +529,6 @@ if (!empty($formSetup->items)) {
 	print '<br>';
 }
 
-$nexusConfigUrl = dol_buildpath('/libeufinconnector/admin/nexusconfig.php', 1);
 print '<div class="opacitymedium">';
 if ($nexusConfigStatus['error'] !== '') {
 	print $langs->trans('LibeufinConnectorNexusConfigStatusMissingOrUnreadable', dol_escape_htmltag($effectiveNexusConfigPath));

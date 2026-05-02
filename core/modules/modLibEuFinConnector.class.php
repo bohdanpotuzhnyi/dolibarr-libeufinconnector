@@ -76,7 +76,7 @@ class modLibEuFinConnector extends DolibarrModules
 		$this->editor_squarred_logo = '';					// Must be image filename into the module/img directory followed with @modulename. Example: 'myimage.png@libeufinconnector'
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '0.1.0';
+		$this->version = '0.1.1';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -319,6 +319,12 @@ class modLibEuFinConnector extends DolibarrModules
 		$this->rights[$r][5] = 'delete'; // In php code, permission will be checked by test if ($user->hasRight('libeufinconnector', 'myobject', 'delete'))
 		$r++;
 		*/
+		$o = 1;
+		$this->rights[$r][0] = $this->numero . sprintf("%02d", ($o * 10) + 4);
+		$this->rights[$r][1] = 'Use LibEuFinConnector tutorial/demo tools';
+		$this->rights[$r][4] = 'tutorial';
+		$this->rights[$r][5] = 'use';
+		$r++;
 		/* END MODULEBUILDER PERMISSIONS */
 
 
@@ -372,6 +378,22 @@ class modLibEuFinConnector extends DolibarrModules
 			'position' => 1000 + $r,
 			'enabled' => 'isModEnabled("libeufinconnector")',
 			'perms' => '1',
+			'target' => '',
+			'user' => 2,
+		);
+
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=libeufinconnector',
+			'type' => 'left',
+			'titre' => 'LibeufinConnectorTutorial',
+			'prefix' => img_picto('', 'account', 'class="paddingright pictofixedwidth valignmiddle"'),
+			'mainmenu' => 'libeufinconnector',
+			'leftmenu' => 'libeufinconnector_tutorial',
+			'url' => '/libeufinconnector/tutorial/index.php?mainmenu=libeufinconnector&leftmenu=libeufinconnector_tutorial',
+			'langs' => 'libeufinconnector@libeufinconnector',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("libeufinconnector") && getDolGlobalInt("LIBEUFINCONNECTOR_TUTORIAL_ENABLE")',
+			'perms' => '$user->hasRight("libeufinconnector", "tutorial", "use")',
 			'target' => '',
 			'user' => 2,
 		);

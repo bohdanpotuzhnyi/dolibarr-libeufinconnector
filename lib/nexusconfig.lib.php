@@ -915,14 +915,20 @@ function libeufinconnectorProbePostgresRuntime()
 	$result['command_preview'] = $psql.' '.libeufinconnectorMaskPostgresConnectionString($connectionString).' -v ON_ERROR_STOP=1 -tAc "SELECT 1;"';
 	$result['output'] = trim(implode("\n", $output));
 	if ($returnCode !== 0) {
-		if (preg_match('/role "([^"]+)" does not exist/i', $result['output'], $matches)) {
+		if (preg_match('/No such file or directory|Is the server running|Connection refused|could not connect to server|could not translate host name/i', $result['output'])) {
+			$result['status'] = 'postgres_unreachable';
+			$result['fix_hint'] = "Install and start PostgreSQL before creating the LibEuFin Nexus role/database.\n\nDebian example:\napt-get install postgresql postgresql-client\nsystemctl enable --now postgresql";
+		} elseif (preg_match('/role "([^"]+)" does not exist/i', $result['output'], $matches)) {
 			$result['status'] = 'missing_role';
 			$result['role'] = $matches[1];
+			$result['fix_hint'] = libeufinconnectorBuildPostgresBootstrapHint($result['role'], $result['database']);
 		} elseif (preg_match('/database "([^"]+)" does not exist/i', $result['output'], $matches)) {
 			$result['status'] = 'missing_database';
 			$result['database'] = $matches[1];
+			$result['fix_hint'] = libeufinconnectorBuildPostgresBootstrapHint($result['role'], $result['database']);
+		} else {
+			$result['fix_hint'] = '';
 		}
-		$result['fix_hint'] = libeufinconnectorBuildPostgresBootstrapHint($result['role'], $result['database']);
 	}
 
 	return $result;

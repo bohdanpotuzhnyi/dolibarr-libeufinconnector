@@ -53,6 +53,7 @@ if (!$res) {
 }
 
 require_once __DIR__.'/class/libeufintransaction.class.php';
+require_once __DIR__.'/lib/libeufinconnector.lib.php';
 require_once __DIR__.'/lib/transactionstaging.lib.php';
 require_once __DIR__.'/lib/transactionworkflow.lib.php';
 
@@ -91,10 +92,14 @@ if ($action === 'create_bank_line') {
 if ($action === 'match_invoice') {
 	$result = libeufinconnectorApplyIncomingInvoiceMatch($db, $object, $user);
 	if (!empty($result['ok'])) {
-		if (!empty($result['payment_id'])) {
+		if (!empty($result['supplier_invoice_id'])) {
+			if (!empty($result['payment_id'])) {
+				setEventMessages($langs->trans('LibeufinConnectorTransactionSupplierPaymentImported', $result['payment_id'], $result['supplier_invoice_id']), null, 'mesgs');
+			} else {
+				setEventMessages($langs->trans('LibeufinConnectorTransactionSupplierInvoiceMatched', $result['supplier_invoice_id']), null, 'mesgs');
+			}
+		} elseif (!empty($result['payment_id'])) {
 			setEventMessages($langs->trans('LibeufinConnectorTransactionPaymentImported', $result['payment_id'], $result['invoice_id']), null, 'mesgs');
-		} elseif (!empty($result['supplier_invoice_id'])) {
-			setEventMessages($langs->trans('LibeufinConnectorTransactionSupplierInvoiceMatched', $result['supplier_invoice_id']), null, 'mesgs');
 		} else {
 			setEventMessages($langs->trans('LibeufinConnectorTransactionInvoiceMatched', $result['invoice_id']), null, 'mesgs');
 		}
@@ -106,6 +111,31 @@ if ($action === 'match_invoice') {
 		} else {
 			setEventMessages($langs->trans('LibeufinConnectorTransactionActionFailed', $result['error']), null, 'errors');
 		}
+	}
+
+	header('Location: '.$baseUrl);
+	exit;
+}
+
+if ($action === 'import_linked_invoice_payment') {
+	if ($object->direction !== LibeufinTransaction::DIRECTION_INCOMING) {
+		$result = array('ok' => false, 'error' => 'Only incoming transactions can import linked invoice payments.');
+	} elseif ((int) $object->fk_facture > 0) {
+		$result = libeufinconnectorCreateIncomingCustomerPayment($db, $object, (int) $object->fk_facture, $user);
+	} elseif ((int) $object->fk_facture_fourn > 0) {
+		$result = libeufinconnectorCreateIncomingSupplierRefundPayment($db, $object, (int) $object->fk_facture_fourn, $user);
+	} else {
+		$result = array('ok' => false, 'error' => 'This transaction is not linked to an invoice or supplier credit note.');
+	}
+
+	if (!empty($result['ok'])) {
+		if ((int) $object->fk_facture_fourn > 0) {
+			setEventMessages($langs->trans('LibeufinConnectorTransactionSupplierPaymentImported', $result['payment_id'], $result['invoice_id']), null, 'mesgs');
+		} else {
+			setEventMessages($langs->trans('LibeufinConnectorTransactionPaymentImported', $result['payment_id'], $result['invoice_id']), null, 'mesgs');
+		}
+	} else {
+		setEventMessages($langs->trans('LibeufinConnectorTransactionActionFailed', $result['error']), null, 'errors');
 	}
 
 	header('Location: '.$baseUrl);
@@ -127,7 +157,15 @@ if ($action === 'select_beneficiary_bank_account') {
 if ($action === 'manual_link') {
 	$result = libeufinconnectorApplyManualTransactionLink($db, $object, GETPOST('manual_link_case', 'aZ09'), GETPOST('manual_link_target', 'restricthtml'), $user);
 	if (!empty($result['ok'])) {
-		setEventMessages($langs->trans('LibeufinConnectorTransactionManualLinkSaved'), null, 'mesgs');
+		if (!empty($result['fk_paiementfourn']) && !empty($result['fk_facture_fourn'])) {
+			setEventMessages($langs->trans('LibeufinConnectorTransactionSupplierPaymentImported', $result['fk_paiementfourn'], $result['fk_facture_fourn']), null, 'mesgs');
+		} elseif (!empty($result['fk_paiement']) && !empty($result['fk_facture'])) {
+			setEventMessages($langs->trans('LibeufinConnectorTransactionPaymentImported', $result['fk_paiement'], $result['fk_facture']), null, 'mesgs');
+		} elseif (!empty($result['fk_bank'])) {
+			setEventMessages($langs->trans('LibeufinConnectorTransactionBankLineCreated', $result['fk_bank']), null, 'mesgs');
+		} else {
+			setEventMessages($langs->trans('LibeufinConnectorTransactionManualLinkSaved'), null, 'mesgs');
+		}
 	} else {
 		setEventMessages($langs->trans('LibeufinConnectorTransactionManualLinkFailed', $result['error']), null, 'errors');
 	}
@@ -180,11 +218,11 @@ if (!empty($payload['beneficiary_bank_account']) && is_array($payload['beneficia
 } elseif (!empty($dolibarrPayload['fk_societe_rib'])) {
 	$currentBeneficiaryBankAccountId = (int) $dolibarrPayload['fk_societe_rib'];
 }
-$bankLineUrl = ((int) $object->fk_bank > 0 ? DOL_URL_ROOT.'/compta/bank/line.php?rowid='.((int) $object->fk_bank) : '');
-$paymentUrl = ((int) $object->fk_paiement > 0 ? DOL_URL_ROOT.'/compta/paiement/card.php?id='.((int) $object->fk_paiement) : '');
-$invoiceUrl = ((int) $object->fk_facture > 0 ? DOL_URL_ROOT.'/compta/facture/card.php?id='.((int) $object->fk_facture) : '');
-$supplierInvoiceUrl = ((int) $object->fk_facture_fourn > 0 ? DOL_URL_ROOT.'/fourn/facture/card.php?facid='.((int) $object->fk_facture_fourn) : '');
-$supplierPaymentUrl = ((int) $object->fk_paiementfourn > 0 ? DOL_URL_ROOT.'/fourn/paiement/card.php?id='.((int) $object->fk_paiementfourn) : '');
+$bankLineLink = libeufinconnectorGetDolibarrObjectNomUrl($db, 'bank', (int) $object->fk_bank, 0);
+$paymentLink = libeufinconnectorGetDolibarrObjectNomUrl($db, 'payment', (int) $object->fk_paiement, 0);
+$invoiceLink = libeufinconnectorGetDolibarrObjectNomUrl($db, 'invoice', (int) $object->fk_facture, 0);
+$supplierInvoiceLink = libeufinconnectorGetDolibarrObjectNomUrl($db, 'supplier_invoice', (int) $object->fk_facture_fourn, 0);
+$supplierPaymentLink = libeufinconnectorGetDolibarrObjectNomUrl($db, 'supplier_payment', (int) $object->fk_paiementfourn, 0);
 $backToList = dol_buildpath('/libeufinconnector/transactions.php?mainmenu=libeufinconnector&leftmenu=libeufinconnector_transactions', 1);
 $canManuallyLink = libeufinconnectorCanManuallyLinkTransaction($object);
 $manualLinkCandidates = ($canManuallyLink ? libeufinconnectorReadManualLinkCandidates($db, $object) : array('invoices' => array(), 'payments' => array(), 'banks' => array()));
@@ -221,6 +259,26 @@ if ($object->direction === LibeufinTransaction::DIRECTION_INCOMING && (int) $obj
 	print '<input type="hidden" name="leftmenu" value="libeufinconnector_transactions">';
 	print '<input type="hidden" name="action" value="match_invoice">';
 	print '<input class="butAction" type="submit" value="'.((int) $object->fk_bank > 0 ? $langs->trans('LibeufinConnectorTransactionRunExactMatch') : $langs->trans('LibeufinConnectorTransactionImportMatchedPayment')).'">';
+	print '</form>';
+}
+if ($object->direction === LibeufinTransaction::DIRECTION_INCOMING && (int) $object->fk_bank <= 0 && (int) $object->fk_facture > 0 && (int) $object->fk_paiement <= 0) {
+	print '<form class="inline-block" method="POST" action="'.dol_escape_htmltag($_SERVER["PHP_SELF"]).'">';
+	print '<input type="hidden" name="token" value="'.newToken().'">';
+	print '<input type="hidden" name="id" value="'.((int) $object->id).'">';
+	print '<input type="hidden" name="mainmenu" value="libeufinconnector">';
+	print '<input type="hidden" name="leftmenu" value="libeufinconnector_transactions">';
+	print '<input type="hidden" name="action" value="import_linked_invoice_payment">';
+	print '<input class="butAction" type="submit" value="'.$langs->trans('LibeufinConnectorTransactionImportMatchedPayment').'">';
+	print '</form>';
+}
+if ($object->direction === LibeufinTransaction::DIRECTION_INCOMING && (int) $object->fk_facture_fourn > 0 && (int) $object->fk_paiementfourn <= 0) {
+	print '<form class="inline-block" method="POST" action="'.dol_escape_htmltag($_SERVER["PHP_SELF"]).'">';
+	print '<input type="hidden" name="token" value="'.newToken().'">';
+	print '<input type="hidden" name="id" value="'.((int) $object->id).'">';
+	print '<input type="hidden" name="mainmenu" value="libeufinconnector">';
+	print '<input type="hidden" name="leftmenu" value="libeufinconnector_transactions">';
+	print '<input type="hidden" name="action" value="import_linked_invoice_payment">';
+	print '<input class="butAction" type="submit" value="'.$langs->trans('LibeufinConnectorTransactionImportMatchedPayment').'">';
 	print '</form>';
 }
 print '</div>';
@@ -306,36 +364,36 @@ if ($displaySubject !== '') {
 }
 print '</td></tr>';
 print '<tr><td>'.$langs->trans('LibeufinConnectorTransactionLinkedBankLine').'</td><td>';
-if ($bankLineUrl !== '') {
-	print '<a href="'.$bankLineUrl.'">#'.((int) $object->fk_bank).'</a>';
+if ($bankLineLink !== '') {
+	print $bankLineLink;
 } else {
 	print '<span class="opacitymedium">'.$langs->trans('LibeufinConnectorTransactionNotLinked').'</span>';
 }
 print '</td></tr>';
 print '<tr><td>'.$langs->trans('LibeufinConnectorTransactionLinkedCustomerPayment').'</td><td>';
-if ($paymentUrl !== '') {
-	print '<a href="'.$paymentUrl.'">#'.((int) $object->fk_paiement).'</a>';
+if ($paymentLink !== '') {
+	print $paymentLink;
 } else {
 	print '<span class="opacitymedium">'.$langs->trans('LibeufinConnectorTransactionNotLinked').'</span>';
 }
 print '</td></tr>';
 print '<tr><td>'.$langs->trans('LibeufinConnectorTransactionLinkedInvoice').'</td><td>';
-if ($invoiceUrl !== '') {
-	print '<a href="'.$invoiceUrl.'">#'.((int) $object->fk_facture).'</a>';
+if ($invoiceLink !== '') {
+	print $invoiceLink;
 } else {
 	print '<span class="opacitymedium">'.$langs->trans('LibeufinConnectorTransactionNotLinked').'</span>';
 }
 print '</td></tr>';
 print '<tr><td>'.$langs->trans('LibeufinConnectorTransactionLinkedSupplierPayment').'</td><td>';
-if ($supplierPaymentUrl !== '') {
-	print '<a href="'.$supplierPaymentUrl.'">#'.((int) $object->fk_paiementfourn).'</a>';
+if ($supplierPaymentLink !== '') {
+	print $supplierPaymentLink;
 } else {
 	print '<span class="opacitymedium">'.$langs->trans('LibeufinConnectorTransactionNotLinked').'</span>';
 }
 print '</td></tr>';
 print '<tr><td>'.$langs->trans('LibeufinConnectorTransactionLinkedSupplierInvoice').'</td><td>';
-if ($supplierInvoiceUrl !== '') {
-	print '<a href="'.$supplierInvoiceUrl.'">#'.((int) $object->fk_facture_fourn).'</a>';
+if ($supplierInvoiceLink !== '') {
+	print $supplierInvoiceLink;
 } else {
 	print '<span class="opacitymedium">'.$langs->trans('LibeufinConnectorTransactionNotLinked').'</span>';
 }
@@ -345,96 +403,112 @@ print '<tr><td>'.$langs->trans('LibeufinConnectorTransactionPayloadChecksum').'<
 print '</table><br>';
 
 if ($canManuallyLink) {
+	$manualLinkOptions = array(
+		'invoice' => array(),
+		'payment' => array(),
+		'bank' => array(),
+	);
+	foreach ($manualLinkCandidates['invoices'] as $candidate) {
+		$typeLabel = ($candidate['object_type'] === 'facture' ? $langs->trans('CustomerInvoice') : $langs->trans('SupplierInvoice'));
+		if ((int) $candidate['type'] === 2) {
+			$typeLabel .= ' / '.$langs->trans('CreditNote');
+		}
+		$label = $typeLabel.' | '.$candidate['ref'];
+		if (!empty($candidate['thirdparty_name'])) {
+			$label .= ' | '.$candidate['thirdparty_name'];
+		}
+		$label .= ' | '.price((float) $candidate['amount']).' '.$candidate['currency'];
+		$manualLinkOptions['invoice'][] = array(
+			'value' => $candidate['object_type'].':'.$candidate['rowid'],
+			'label' => $label,
+		);
+	}
+	foreach ($manualLinkCandidates['payments'] as $candidate) {
+		$typeLabel = ($candidate['object_type'] === 'payment' ? $langs->trans('CustomerPayment') : $langs->trans('SupplierPayment'));
+		$label = $typeLabel.' | '.$candidate['ref'].' | '.price((float) $candidate['amount']);
+		if (!empty($object->currency)) {
+			$label .= ' '.$object->currency;
+		}
+		if ((int) $candidate['fk_bank'] > 0) {
+			$label .= ' | bank #'.((int) $candidate['fk_bank']);
+		}
+		$manualLinkOptions['payment'][] = array(
+			'value' => $candidate['object_type'].':'.$candidate['rowid'],
+			'label' => $label,
+		);
+	}
+	foreach ($manualLinkCandidates['banks'] as $candidate) {
+		$label = '#'.((int) $candidate['rowid']).' | '.trim((string) $candidate['label']);
+		$label .= ' | '.price((float) $candidate['amount']);
+		if (!empty($object->currency)) {
+			$label .= ' '.$object->currency;
+		}
+		$manualLinkOptions['bank'][] = array(
+			'value' => 'bank:'.((int) $candidate['rowid']),
+			'label' => $label,
+		);
+	}
+	$defaultManualLinkCase = 'invoice';
+	if (empty($manualLinkOptions['invoice']) && !empty($manualLinkOptions['payment'])) {
+		$defaultManualLinkCase = 'payment';
+	} elseif (empty($manualLinkOptions['invoice']) && empty($manualLinkOptions['payment']) && !empty($manualLinkOptions['bank'])) {
+		$defaultManualLinkCase = 'bank';
+	}
+
 	print '<div class="tagtable centpercent">';
+	print '<form method="POST" action="'.dol_escape_htmltag($_SERVER["PHP_SELF"]).'">';
+	print '<input type="hidden" name="token" value="'.newToken().'">';
+	print '<input type="hidden" name="id" value="'.((int) $object->id).'">';
+	print '<input type="hidden" name="mainmenu" value="libeufinconnector">';
+	print '<input type="hidden" name="leftmenu" value="libeufinconnector_transactions">';
+	print '<input type="hidden" name="action" value="manual_link">';
 	print '<table class="border centpercent">';
 	print '<tr class="liste_titre"><td colspan="2">'.$langs->trans('LibeufinConnectorTransactionManualLink').'</td></tr>';
-
-	print '<tr><td class="titlefield">'.$langs->trans('LibeufinConnectorTransactionManualLinkInvoiceCase').'</td><td>';
-	if (!empty($manualLinkCandidates['invoices'])) {
-		print '<form method="POST" action="'.dol_escape_htmltag($_SERVER["PHP_SELF"]).'">';
-		print '<input type="hidden" name="token" value="'.newToken().'">';
-		print '<input type="hidden" name="id" value="'.((int) $object->id).'">';
-		print '<input type="hidden" name="mainmenu" value="libeufinconnector">';
-		print '<input type="hidden" name="leftmenu" value="libeufinconnector_transactions">';
-		print '<input type="hidden" name="action" value="manual_link">';
-		print '<input type="hidden" name="manual_link_case" value="invoice">';
-		print '<select class="flat minwidth400" name="manual_link_target">';
-		foreach ($manualLinkCandidates['invoices'] as $candidate) {
-			$typeLabel = ($candidate['object_type'] === 'facture' ? $langs->trans('CustomerInvoice') : $langs->trans('SupplierInvoice'));
-			if ((int) $candidate['type'] === 2) {
-				$typeLabel .= ' / '.$langs->trans('CreditNote');
-			}
-			$label = $typeLabel.' | '.$candidate['ref'];
-			if (!empty($candidate['thirdparty_name'])) {
-				$label .= ' | '.$candidate['thirdparty_name'];
-			}
-			$label .= ' | '.price((float) $candidate['amount']).' '.$candidate['currency'];
-			print '<option value="'.dol_escape_htmltag($candidate['object_type'].':'.$candidate['rowid']).'">'.dol_escape_htmltag($label).'</option>';
-		}
-		print '</select> ';
-		print '<input class="button" type="submit" value="'.$langs->trans('LibeufinConnectorTransactionManualLinkButton').'">';
-		print '</form>';
-	} else {
-		print '<span class="opacitymedium">'.$langs->trans('LibeufinConnectorTransactionManualLinkNoCandidates').'</span>';
-	}
+	print '<tr><td class="titlefield">'.$langs->trans('Type').'</td><td>';
+	print '<select class="flat minwidth200" id="manual_link_case" name="manual_link_case">';
+	print '<option value="invoice"'.($defaultManualLinkCase === 'invoice' ? ' selected' : '').'>'.$langs->trans('LibeufinConnectorTransactionManualLinkInvoiceCase').'</option>';
+	print '<option value="payment"'.($defaultManualLinkCase === 'payment' ? ' selected' : '').'>'.$langs->trans('LibeufinConnectorTransactionManualLinkPaymentCase').'</option>';
+	print '<option value="bank"'.($defaultManualLinkCase === 'bank' ? ' selected' : '').'>'.$langs->trans('LibeufinConnectorTransactionManualLinkBankCase').'</option>';
+	print '</select>';
 	print '</td></tr>';
-
-	print '<tr><td class="titlefield">'.$langs->trans('LibeufinConnectorTransactionManualLinkPaymentCase').'</td><td>';
-	if (!empty($manualLinkCandidates['payments'])) {
-		print '<form method="POST" action="'.dol_escape_htmltag($_SERVER["PHP_SELF"]).'">';
-		print '<input type="hidden" name="token" value="'.newToken().'">';
-		print '<input type="hidden" name="id" value="'.((int) $object->id).'">';
-		print '<input type="hidden" name="mainmenu" value="libeufinconnector">';
-		print '<input type="hidden" name="leftmenu" value="libeufinconnector_transactions">';
-		print '<input type="hidden" name="action" value="manual_link">';
-		print '<input type="hidden" name="manual_link_case" value="payment">';
-		print '<select class="flat minwidth400" name="manual_link_target">';
-		foreach ($manualLinkCandidates['payments'] as $candidate) {
-			$typeLabel = ($candidate['object_type'] === 'payment' ? $langs->trans('CustomerPayment') : $langs->trans('SupplierPayment'));
-			$label = $typeLabel.' | '.$candidate['ref'].' | '.price((float) $candidate['amount']);
-			if (!empty($object->currency)) {
-				$label .= ' '.$object->currency;
+	print '<tr><td class="titlefield">'.$langs->trans('Object').'</td><td>';
+	foreach ($manualLinkOptions as $case => $options) {
+		print '<select class="flat minwidth500 manual-link-target" data-link-case="'.$case.'" name="manual_link_target_'.$case.'"'.($case === $defaultManualLinkCase ? '' : ' style="display:none"').'>';
+		if (!empty($options)) {
+			foreach ($options as $option) {
+				print '<option value="'.dol_escape_htmltag($option['value']).'">'.dol_escape_htmltag($option['label']).'</option>';
 			}
-			if ((int) $candidate['fk_bank'] > 0) {
-				$label .= ' | bank #'.((int) $candidate['fk_bank']);
-			}
-			print '<option value="'.dol_escape_htmltag($candidate['object_type'].':'.$candidate['rowid']).'">'.dol_escape_htmltag($label).'</option>';
+		} else {
+			print '<option value="">'.$langs->trans('LibeufinConnectorTransactionManualLinkNoCandidates').'</option>';
 		}
-		print '</select> ';
-		print '<input class="button" type="submit" value="'.$langs->trans('LibeufinConnectorTransactionManualLinkButton').'">';
-		print '</form>';
-	} else {
-		print '<span class="opacitymedium">'.$langs->trans('LibeufinConnectorTransactionManualLinkNoCandidates').'</span>';
+		print '</select>';
 	}
+	print '<input type="hidden" id="manual_link_target" name="manual_link_target" value="'.(!empty($manualLinkOptions[$defaultManualLinkCase][0]['value']) ? dol_escape_htmltag($manualLinkOptions[$defaultManualLinkCase][0]['value']) : '').'">';
 	print '</td></tr>';
-
-	print '<tr><td class="titlefield">'.$langs->trans('LibeufinConnectorTransactionManualLinkBankCase').'</td><td>';
-	if (!empty($manualLinkCandidates['banks'])) {
-		print '<form method="POST" action="'.dol_escape_htmltag($_SERVER["PHP_SELF"]).'">';
-		print '<input type="hidden" name="token" value="'.newToken().'">';
-		print '<input type="hidden" name="id" value="'.((int) $object->id).'">';
-		print '<input type="hidden" name="mainmenu" value="libeufinconnector">';
-		print '<input type="hidden" name="leftmenu" value="libeufinconnector_transactions">';
-		print '<input type="hidden" name="action" value="manual_link">';
-		print '<input type="hidden" name="manual_link_case" value="bank">';
-		print '<select class="flat minwidth400" name="manual_link_target">';
-		foreach ($manualLinkCandidates['banks'] as $candidate) {
-			$label = '#'.((int) $candidate['rowid']).' | '.trim((string) $candidate['label']);
-			$label .= ' | '.price((float) $candidate['amount']);
-			if (!empty($object->currency)) {
-				$label .= ' '.$object->currency;
-			}
-			print '<option value="bank:'.((int) $candidate['rowid']).'">'.dol_escape_htmltag($label).'</option>';
-		}
-		print '</select> ';
-		print '<input class="button" type="submit" value="'.$langs->trans('LibeufinConnectorTransactionManualLinkButton').'">';
-		print '</form>';
-	} else {
-		print '<span class="opacitymedium">'.$langs->trans('LibeufinConnectorTransactionManualLinkNoCandidates').'</span>';
-	}
-	print '</td></tr>';
-
+	print '<tr><td></td><td><input class="button" type="submit" value="'.$langs->trans('LibeufinConnectorTransactionManualLinkButton').'"></td></tr>';
 	print '</table>';
+	print '</form>';
+	print '<script>
+jQuery(function() {
+	function updateManualLinkTarget() {
+		var selectedCase = jQuery("#manual_link_case").val();
+		var selectedTarget = "";
+		jQuery(".manual-link-target").each(function() {
+			var field = jQuery(this);
+			if (field.data("link-case") === selectedCase) {
+				field.show();
+				selectedTarget = field.val() || "";
+			} else {
+				field.hide();
+			}
+		});
+		jQuery("#manual_link_target").val(selectedTarget);
+	}
+	jQuery("#manual_link_case").on("change", updateManualLinkTarget);
+	jQuery(".manual-link-target").on("change", updateManualLinkTarget);
+	updateManualLinkTarget();
+});
+</script>';
 	print '</div><br>';
 }
 

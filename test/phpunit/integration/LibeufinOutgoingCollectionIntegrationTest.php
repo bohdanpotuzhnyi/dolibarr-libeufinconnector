@@ -33,6 +33,9 @@ class LibeufinOutgoingCollectionIntegrationTest extends LibeufinConnectorIntegra
 		$supplierInvoice = $this->createValidatedSupplierInvoice(35.0);
 		$supplierPayment = $this->createSupplierPayment($supplierInvoice, 35.0);
 
+		$supplierCreditNote = $this->createValidatedSupplierCreditNote(20.0);
+		$supplierRefundPayment = $this->createSupplierPayment($supplierCreditNote, 20.0);
+
 		$customerCreditNote = $this->createValidatedCustomerCreditNote(15.0);
 		$customerRefund = $this->createCustomerRefundPayment($customerCreditNote, 15.0);
 
@@ -57,10 +60,16 @@ class LibeufinOutgoingCollectionIntegrationTest extends LibeufinConnectorIntegra
 		);
 		$this->assertSame((int) $customerRefund->id, (int) $customerTransaction->fk_paiement);
 		$this->assertSame((int) $customerCreditNote->id, (int) $customerTransaction->fk_facture);
-		$this->assertSame(LibeufinTransaction::STATUS_BOOKED, $customerTransaction->transaction_status);
+		$this->assertSame(LibeufinTransaction::STATUS_NEW, $customerTransaction->transaction_status);
 		$this->assertSame(
 			array('ready' => true, 'issues' => array()),
 			libeufinconnectorGetOutgoingTransactionValidation($customerTransaction)
+		);
+
+		$supplierRefundTransaction = new LibeufinTransaction(self::$dbHandle);
+		$this->assertSame(
+			0,
+			$supplierRefundTransaction->fetchByExternalTransactionId('LFC-SPAY-E'.((int) getEntity($supplierRefundTransaction->element, 1)).'-P'.((int) $supplierRefundPayment->id), LibeufinTransaction::DIRECTION_OUTGOING, (int) getEntity($supplierRefundTransaction->element, 1))
 		);
 	}
 }

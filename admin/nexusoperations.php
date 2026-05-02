@@ -59,6 +59,36 @@ if (!$user->admin) {
 
 $langs->loadLangs(array("admin", "libeufinconnector@libeufinconnector"));
 
+/**
+ * Render optional PostgreSQL probe details in a collapsible block.
+ *
+ * @param Translate $langs Translation handler.
+ * @param array{command_preview:string,output:string,fix_hint:string} $postgresProbe Probe result.
+ * @return void
+ */
+function libeufinconnectorPrintPostgresProbeDetails($langs, array $postgresProbe)
+{
+	if ($postgresProbe['command_preview'] === '' && $postgresProbe['output'] === '' && $postgresProbe['fix_hint'] === '') {
+		return;
+	}
+
+	print '<details class="marginbottomonly">';
+	print '<summary>'.$langs->trans('LibeufinConnectorPostgresProbeDetails').'</summary>';
+	if ($postgresProbe['command_preview'] !== '') {
+		print '<div class="opacitymedium">'.$langs->trans('LibeufinConnectorPostgresProbeCommand').'</div>';
+		print '<pre class="small" style="white-space: pre-wrap;">'.dol_escape_htmltag($postgresProbe['command_preview'], 0, 1).'</pre>';
+	}
+	if ($postgresProbe['output'] !== '') {
+		print '<div class="opacitymedium">'.$langs->trans('LibeufinConnectorPostgresProbeRawOutput').'</div>';
+		print '<pre class="small" style="white-space: pre-wrap;">'.dol_escape_htmltag($postgresProbe['output'], 0, 1).'</pre>';
+	}
+	if ($postgresProbe['fix_hint'] !== '') {
+		print '<div class="opacitymedium">'.$langs->trans('LibeufinConnectorPostgresProbeSuggestedCommands').'</div>';
+		print '<pre class="small" style="white-space: pre-wrap;">'.dol_escape_htmltag($postgresProbe['fix_hint'], 0, 1).'</pre>';
+	}
+	print '</details>';
+}
+
 $action = GETPOST('action', 'aZ09');
 $operation = GETPOST('operation', 'aZ09');
 $operations = libeufinconnectorGetNexusOperations();
@@ -116,24 +146,18 @@ if ($postgresProbe['status'] === 'ok') {
 	print '<div class="warning">'.$langs->trans('LibeufinConnectorPostgresProbeConfigNotReadable', dol_escape_htmltag($postgresProbe['output'])).'</div>';
 } elseif ($postgresProbe['status'] === 'missing_psql') {
 	print '<div class="warning">'.$langs->trans('LibeufinConnectorPostgresProbeMissingPsql').'</div>';
+} elseif ($postgresProbe['status'] === 'postgres_unreachable') {
+	print '<div class="warning">'.$langs->trans('LibeufinConnectorPostgresProbeUnreachable', dol_escape_htmltag($postgresProbe['config'])).'</div>';
+	libeufinconnectorPrintPostgresProbeDetails($langs, $postgresProbe);
 } elseif ($postgresProbe['status'] === 'missing_role') {
 	print '<div class="warning">'.$langs->trans('LibeufinConnectorPostgresProbeMissingRole', dol_escape_htmltag($postgresProbe['role'])).'</div>';
-	if ($postgresProbe['fix_hint'] !== '') {
-		print '<pre class="small" style="white-space: pre-wrap;">'.dol_escape_htmltag($postgresProbe['fix_hint'], 0, 1).'</pre>';
-	}
+	libeufinconnectorPrintPostgresProbeDetails($langs, $postgresProbe);
 } elseif ($postgresProbe['status'] === 'missing_database') {
 	print '<div class="warning">'.$langs->trans('LibeufinConnectorPostgresProbeMissingDatabase', dol_escape_htmltag($postgresProbe['database']), dol_escape_htmltag($postgresProbe['role'])).'</div>';
-	if ($postgresProbe['fix_hint'] !== '') {
-		print '<pre class="small" style="white-space: pre-wrap;">'.dol_escape_htmltag($postgresProbe['fix_hint'], 0, 1).'</pre>';
-	}
+	libeufinconnectorPrintPostgresProbeDetails($langs, $postgresProbe);
 } else {
 	print '<div class="warning">'.$langs->trans('LibeufinConnectorPostgresProbeFailed', dol_escape_htmltag($postgresProbe['command_preview'])).'</div>';
-	if ($postgresProbe['output'] !== '') {
-		print '<pre class="small" style="white-space: pre-wrap;">'.dol_escape_htmltag($postgresProbe['output'], 0, 1).'</pre>';
-	}
-	if ($postgresProbe['fix_hint'] !== '') {
-		print '<pre class="small" style="white-space: pre-wrap;">'.dol_escape_htmltag($postgresProbe['fix_hint'], 0, 1).'</pre>';
-	}
+	libeufinconnectorPrintPostgresProbeDetails($langs, $postgresProbe);
 }
 print '</div>';
 

@@ -698,10 +698,12 @@ function libeufinconnectorReadPreparedOutgoingSupplierPayments($db, $limit = 0)
 {
 	global $conf;
 
+	require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
+
 	$rows = array();
 	$sql = "SELECT p.rowid AS paiementfourn_id, p.entity, p.ref AS paiementfourn_ref, p.datep, p.amount,";
 	$sql .= " p.multicurrency_amount, p.fk_bank, p.note AS paiementfourn_note, p.fk_paiement, p.num_paiement, p.statut AS paiementfourn_status,";
-	$sql .= " pf.fk_facturefourn AS fk_facture_fourn, ff.ref AS supplier_invoice_ref, ff.fk_soc, ff.fk_mode_reglement,";
+	$sql .= " pf.fk_facturefourn AS fk_facture_fourn, ff.ref AS supplier_invoice_ref, ff.type AS supplier_invoice_type, ff.fk_soc, ff.fk_mode_reglement,";
 	$sql .= " s.nom AS supplier_name, cp.code AS payment_code, cp.libelle AS payment_label,";
 	$sql .= " sr.rowid AS fk_societe_rib, sr.label AS rib_label, sr.proprio AS rib_owner, sr.bic AS rib_bic, sr.iban_prefix AS rib_iban, sr.number AS rib_number";
 	$sql .= " FROM ".MAIN_DB_PREFIX."paiementfourn AS p";
@@ -713,6 +715,8 @@ function libeufinconnectorReadPreparedOutgoingSupplierPayments($db, $limit = 0)
 	$sql .= " WHERE p.entity = ".((int) $conf->entity);
 	$sql .= " AND ff.entity = ".((int) $conf->entity);
 	$sql .= " AND cp.code = 'VIR'";
+	$sql .= " AND p.amount > 0";
+	$sql .= " AND ff.type <> ".((int) FactureFournisseur::TYPE_CREDIT_NOTE);
 	$sql .= " ORDER BY p.datep DESC, p.rowid DESC";
 	if ($limit > 0) {
 		$sql .= $db->plimit($limit, 0);
@@ -918,7 +922,7 @@ function libeufinconnectorBuildCustomerRefundOutgoingStageData(array $row)
 		'external_message_id' => 'paiement:'.((int) $row['paiement_id']),
 		'external_order_id' => !empty($row['customer_credit_note_ref']) ? 'credit-note:'.$row['customer_credit_note_ref'] : '',
 		'direction' => LibeufinTransaction::DIRECTION_OUTGOING,
-		'transaction_status' => (!empty($row['fk_bank']) ? LibeufinTransaction::STATUS_BOOKED : LibeufinTransaction::STATUS_NEW),
+		'transaction_status' => LibeufinTransaction::STATUS_NEW,
 		'amount' => isset($row['amount']) ? price2num(abs((float) $row['amount']), 'MU') : 0,
 		'currency' => libeufinconnectorGetImportedTransactionCurrency(),
 		'transaction_date' => !empty($row['datep']) ? (string) $row['datep'] : null,
@@ -1262,7 +1266,7 @@ function libeufinconnectorMapInitiatedOutgoingStatus($status)
 {
 	$status = strtolower(trim((string) $status));
 
-	if ($status === 'success') {
+	if ($status === 'success' || $status === 'pending') {
 		return LibeufinTransaction::STATUS_SUBMITTED;
 	}
 	if ($status === 'permanent_failure' || $status === 'transient_failure' || $status === 'failed') {
@@ -2231,6 +2235,32 @@ function libeufinconnectorGetConfiguredIncomingReceivingAccountData($db)
 }
 
 /**
+ * Remove object links from native Dolibarr records to one staged transaction.
+ *
+ * @param DoliDB              $db Database handler.
+ * @param LibeufinTransaction $transaction Staged transaction.
+ * @return void
+ */
+function libeufinconnectorClearTransactionObjectLinks($db, LibeufinTransaction $transaction)
+{
+	if ((int) $transaction->id <= 0) {
+		return;
+	}
+
+	$sourceTypes = array('bank', 'payment', 'payment_supplier', 'facture', 'invoice_supplier', 'widthdraw');
+	$quotedTypes = array();
+	foreach ($sourceTypes as $sourceType) {
+		$quotedTypes[] = "'".$db->escape($sourceType)."'";
+	}
+
+	$sql = "DELETE FROM ".MAIN_DB_PREFIX."element_element";
+	$sql .= " WHERE fk_target = ".((int) $transaction->id);
+	$sql .= " AND targettype = '".$db->escape($transaction->getElementType())."'";
+	$sql .= " AND sourcetype IN (".implode(',', $quotedTypes).")";
+	$db->query($sql);
+}
+
+/**
  * Ensure native Dolibarr object links exist for a staged transaction.
  *
  * @param DoliDB              $db Database handler.
@@ -2283,10 +2313,7 @@ function libeufinconnectorEnsureTransactionObjectLinks($db, LibeufinTransaction 
  */
 function libeufinconnectorCanManuallyLinkTransaction(LibeufinTransaction $transaction)
 {
-	return ((int) $transaction->fk_paiement <= 0
-		&& (int) $transaction->fk_paiementfourn <= 0
-		&& (int) $transaction->fk_facture <= 0
-		&& (int) $transaction->fk_facture_fourn <= 0);
+	return ((int) $transaction->id > 0);
 }
 
 /**
@@ -2628,6 +2655,278 @@ function libeufinconnectorResolveBankLineLinks($db, $bankId)
 }
 
 /**
+ * Find another staged transaction already using a native payment or bank line.
+ *
+ * @param DoliDB              $db Database handler.
+ * @param LibeufinTransaction $transaction Current staged transaction.
+ * @param string              $field Native link field to check.
+ * @param int                 $id Native object id.
+ * @return int Conflicting staged transaction id, or 0.
+ */
+function libeufinconnectorFindOtherTransactionUsingNativeLink($db, LibeufinTransaction $transaction, $field, $id)
+{
+	$allowedFields = array('fk_bank', 'fk_paiement', 'fk_paiementfourn');
+	if (!in_array($field, $allowedFields, true) || (int) $id <= 0) {
+		return 0;
+	}
+
+	$sql = "SELECT rowid";
+	$sql .= " FROM ".MAIN_DB_PREFIX."libeufinconnector_transaction";
+	$sql .= " WHERE entity = ".((int) $transaction->entity);
+	$sql .= " AND rowid <> ".((int) $transaction->id);
+	$sql .= " AND ".$field." = ".((int) $id);
+	$sql .= " ORDER BY rowid ASC";
+	$sql .= $db->plimit(1, 0);
+	$resql = $db->query($sql);
+	if (!$resql) {
+		return 0;
+	}
+
+	$obj = $db->fetch_object($resql);
+	$db->free($resql);
+
+	return $obj ? (int) $obj->rowid : 0;
+}
+
+/**
+ * Check whether a native payment or bank line is free for this staged transaction.
+ *
+ * @param DoliDB              $db Database handler.
+ * @param LibeufinTransaction $transaction Current staged transaction.
+ * @param string              $field Native link field to check.
+ * @param int                 $id Native object id.
+ * @return array{ok:bool,status:string,error:string,conflict_id:int}
+ */
+function libeufinconnectorAssertNativeLinkAvailable($db, LibeufinTransaction $transaction, $field, $id)
+{
+	$conflictId = libeufinconnectorFindOtherTransactionUsingNativeLink($db, $transaction, $field, $id);
+	if ($conflictId > 0) {
+		return array(
+			'ok' => false,
+			'status' => 'native_link_already_used',
+			'error' => 'The selected payment or bank line is already linked to staged transaction #'.$conflictId.'.',
+			'conflict_id' => $conflictId,
+		);
+	}
+
+	return array('ok' => true, 'status' => '', 'error' => '', 'conflict_id' => 0);
+}
+
+/**
+ * Ensure an existing native payment has a bank line, then resolve its related ids.
+ *
+ * @param DoliDB              $db Database handler.
+ * @param LibeufinTransaction $transaction Staged transaction.
+ * @param string              $targetType payment or payment_supplier.
+ * @param int                 $paymentId Native payment id.
+ * @param object              $user Acting user.
+ * @return array{ok:bool,status:string,error:string,fk_bank:int,fk_paiement:int,fk_paiementfourn:int,fk_facture:int,fk_facture_fourn:int}
+ */
+function libeufinconnectorEnsureExistingPaymentBankLine($db, LibeufinTransaction $transaction, $targetType, $paymentId, $user)
+{
+	$targetType = (string) $targetType;
+	$paymentId = (int) $paymentId;
+	$result = array(
+		'ok' => false,
+		'status' => 'payment_not_found',
+		'error' => 'The selected payment was not found.',
+		'fk_bank' => (int) $transaction->fk_bank,
+		'fk_paiement' => 0,
+		'fk_paiementfourn' => 0,
+		'fk_facture' => 0,
+		'fk_facture_fourn' => 0,
+	);
+
+	if ($targetType === 'payment') {
+		require_once DOL_DOCUMENT_ROOT.'/compta/paiement/class/paiement.class.php';
+
+		$payment = new Paiement($db);
+		if ($payment->fetch($paymentId) <= 0) {
+			return $result;
+		}
+		if ($transaction->direction === LibeufinTransaction::DIRECTION_INCOMING && (float) price2num((float) $payment->amount, 'MT') < 0) {
+			$result['status'] = 'bad_payment_sign';
+			$result['error'] = 'The selected customer payment is not an incoming customer payment.';
+			return $result;
+		}
+
+		$resolved = libeufinconnectorResolveCustomerPaymentLinks($db, $paymentId);
+		$result = array_merge($result, $resolved);
+		$availability = libeufinconnectorAssertNativeLinkAvailable($db, $transaction, 'fk_paiement', $paymentId);
+		if (empty($availability['ok'])) {
+			$result['status'] = $availability['status'];
+			$result['error'] = $availability['error'];
+			return $result;
+		}
+		if ((int) $result['fk_bank'] > 0) {
+			$availability = libeufinconnectorAssertNativeLinkAvailable($db, $transaction, 'fk_bank', (int) $result['fk_bank']);
+			if (empty($availability['ok'])) {
+				$result['status'] = $availability['status'];
+				$result['error'] = $availability['error'];
+				return $result;
+			}
+			$result['ok'] = true;
+			$result['status'] = 'linked_existing_bank';
+			$result['error'] = '';
+			return $result;
+		}
+
+		$bankId = (int) $transaction->fk_bank;
+		if ($bankId > 0) {
+			$availability = libeufinconnectorAssertNativeLinkAvailable($db, $transaction, 'fk_bank', $bankId);
+			if (empty($availability['ok'])) {
+				$result['status'] = $availability['status'];
+				$result['error'] = $availability['error'];
+				return $result;
+			}
+			if ($payment->update_fk_bank($bankId) <= 0) {
+				$result['status'] = 'payment_bank_link_failed';
+				$result['error'] = $payment->error;
+				return $result;
+			}
+
+			require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
+			$account = new Account($db);
+			if ($account->add_url_line($bankId, $paymentId, DOL_URL_ROOT.'/compta/paiement/card.php?id=', '(paiement)', 'payment') <= 0) {
+				$result['status'] = 'payment_bank_url_link_failed';
+				$result['error'] = $account->error;
+				return $result;
+			}
+		} else {
+			$bankAccountId = 0;
+			if ((int) $resolved['fk_facture'] > 0) {
+				require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
+				$invoice = new Facture($db);
+				if ($invoice->fetch((int) $resolved['fk_facture']) > 0) {
+					$invoiceAccount = libeufinconnectorGetInvoiceReceivingAccountData($db, $invoice);
+					$bankAccountId = (int) $invoiceAccount['bank_account_id'];
+				}
+			}
+			if ($bankAccountId <= 0) {
+				$configuredAccount = libeufinconnectorGetConfiguredIncomingReceivingAccountData($db);
+				$bankAccountId = (int) $configuredAccount['bank_account_id'];
+			}
+			if ($bankAccountId <= 0) {
+				$result['status'] = 'missing_bank_account';
+				$result['error'] = 'No mapped Dolibarr bank account is configured.';
+				return $result;
+			}
+
+			$bankId = (int) $payment->addPaymentToBank($user, 'payment', libeufinconnectorBuildIncomingBankLabel($transaction), $bankAccountId, '', '');
+			if ($bankId <= 0) {
+				$result['status'] = 'payment_bank_create_failed';
+				$result['error'] = $payment->error;
+				return $result;
+			}
+		}
+
+		$resolved = libeufinconnectorResolveCustomerPaymentLinks($db, $paymentId);
+		$result = array_merge($result, $resolved);
+		$result['fk_bank'] = $bankId;
+		$result['ok'] = true;
+		$result['status'] = 'bank_created_or_linked';
+		$result['error'] = '';
+		return $result;
+	}
+
+	if ($targetType === 'payment_supplier') {
+		require_once DOL_DOCUMENT_ROOT.'/fourn/class/paiementfourn.class.php';
+
+		$payment = new PaiementFourn($db);
+		if ($payment->fetch($paymentId) <= 0) {
+			return $result;
+		}
+		if ($transaction->direction === LibeufinTransaction::DIRECTION_INCOMING && (float) price2num((float) $payment->amount, 'MT') > 0) {
+			$result['status'] = 'bad_payment_sign';
+			$result['error'] = 'The selected supplier payment is not an incoming supplier refund.';
+			return $result;
+		}
+
+		$resolved = libeufinconnectorResolveSupplierPaymentLinks($db, $paymentId);
+		$result = array_merge($result, $resolved);
+		$availability = libeufinconnectorAssertNativeLinkAvailable($db, $transaction, 'fk_paiementfourn', $paymentId);
+		if (empty($availability['ok'])) {
+			$result['status'] = $availability['status'];
+			$result['error'] = $availability['error'];
+			return $result;
+		}
+		if ((int) $result['fk_bank'] > 0) {
+			$availability = libeufinconnectorAssertNativeLinkAvailable($db, $transaction, 'fk_bank', (int) $result['fk_bank']);
+			if (empty($availability['ok'])) {
+				$result['status'] = $availability['status'];
+				$result['error'] = $availability['error'];
+				return $result;
+			}
+			$result['ok'] = true;
+			$result['status'] = 'linked_existing_bank';
+			$result['error'] = '';
+			return $result;
+		}
+
+		$bankId = (int) $transaction->fk_bank;
+		if ($bankId > 0) {
+			$availability = libeufinconnectorAssertNativeLinkAvailable($db, $transaction, 'fk_bank', $bankId);
+			if (empty($availability['ok'])) {
+				$result['status'] = $availability['status'];
+				$result['error'] = $availability['error'];
+				return $result;
+			}
+			if ($payment->update_fk_bank($bankId) <= 0) {
+				$result['status'] = 'payment_bank_link_failed';
+				$result['error'] = $payment->error;
+				return $result;
+			}
+
+			require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
+			$account = new Account($db);
+			if ($account->add_url_line($bankId, $paymentId, DOL_URL_ROOT.'/fourn/paiement/card.php?id=', '(paiement)', 'payment_supplier') <= 0) {
+				$result['status'] = 'payment_bank_url_link_failed';
+				$result['error'] = $account->error;
+				return $result;
+			}
+		} else {
+			$bankAccountId = 0;
+			if ((int) $resolved['fk_facture_fourn'] > 0) {
+				require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
+				$invoice = new FactureFournisseur($db);
+				if ($invoice->fetch((int) $resolved['fk_facture_fourn']) > 0) {
+					$invoiceAccount = libeufinconnectorGetSupplierInvoiceReceivingAccountData($db, $invoice);
+					$bankAccountId = (int) $invoiceAccount['bank_account_id'];
+				}
+			}
+			if ($bankAccountId <= 0) {
+				$configuredAccount = libeufinconnectorGetConfiguredIncomingReceivingAccountData($db);
+				$bankAccountId = (int) $configuredAccount['bank_account_id'];
+			}
+			if ($bankAccountId <= 0) {
+				$result['status'] = 'missing_bank_account';
+				$result['error'] = 'No mapped Dolibarr bank account is configured.';
+				return $result;
+			}
+
+			$bankId = (int) $payment->addPaymentToBank($user, 'payment_supplier', '(SupplierInvoicePayment)', $bankAccountId, '', '');
+			if ($bankId <= 0) {
+				$result['status'] = 'payment_bank_create_failed';
+				$result['error'] = $payment->error;
+				return $result;
+			}
+		}
+
+		$resolved = libeufinconnectorResolveSupplierPaymentLinks($db, $paymentId);
+		$result = array_merge($result, $resolved);
+		$result['fk_bank'] = $bankId;
+		$result['ok'] = true;
+		$result['status'] = 'bank_created_or_linked';
+		$result['error'] = '';
+		return $result;
+	}
+
+	$result['status'] = 'bad_target_type';
+	$result['error'] = 'The selected object is not a payment.';
+	return $result;
+}
+
+/**
  * Apply a constrained manual object link onto one staged transaction.
  *
  * @param DoliDB              $db Database handler.
@@ -2635,7 +2934,7 @@ function libeufinconnectorResolveBankLineLinks($db, $bankId)
  * @param string              $linkCase One of invoice, payment, bank.
  * @param string              $target Encoded object target.
  * @param object              $user Acting user.
- * @return array{ok:bool,status:string,error:string}
+ * @return array{ok:bool,status:string,error:string,fk_bank?:int,fk_paiement?:int,fk_paiementfourn?:int,fk_facture?:int,fk_facture_fourn?:int}
  */
 function libeufinconnectorApplyManualTransactionLink($db, LibeufinTransaction $transaction, $linkCase, $target, $user)
 {
@@ -2662,6 +2961,19 @@ function libeufinconnectorApplyManualTransactionLink($db, LibeufinTransaction $t
 
 	if ($linkCase === 'invoice') {
 		if ($targetType === 'facture') {
+			if ($transaction->direction === LibeufinTransaction::DIRECTION_INCOMING) {
+				$import = libeufinconnectorCreateIncomingCustomerPayment($db, $transaction, $targetId, $user);
+				return array(
+					'ok' => !empty($import['ok']),
+					'status' => $import['status'],
+					'error' => $import['error'],
+					'fk_bank' => $import['bank_id'],
+					'fk_paiement' => $import['payment_id'],
+					'fk_paiementfourn' => 0,
+					'fk_facture' => $import['invoice_id'],
+					'fk_facture_fourn' => 0,
+				);
+			}
 			$resolved['fk_facture'] = $targetId;
 			$paymentData = array('fk_paiement' => 0, 'fk_bank' => 0);
 			$sql = "SELECT fk_paiement";
@@ -2683,6 +2995,19 @@ function libeufinconnectorApplyManualTransactionLink($db, LibeufinTransaction $t
 			}
 			$resolved = array_merge($resolved, $paymentData);
 		} elseif ($targetType === 'invoice_supplier') {
+			if ($transaction->direction === LibeufinTransaction::DIRECTION_INCOMING) {
+				$import = libeufinconnectorCreateIncomingSupplierRefundPayment($db, $transaction, $targetId, $user);
+				return array(
+					'ok' => !empty($import['ok']),
+					'status' => $import['status'],
+					'error' => $import['error'],
+					'fk_bank' => $import['bank_id'],
+					'fk_paiement' => 0,
+					'fk_paiementfourn' => $import['payment_id'],
+					'fk_facture' => 0,
+					'fk_facture_fourn' => $import['invoice_id'],
+				);
+			}
 			$resolved['fk_facture_fourn'] = $targetId;
 			$paymentData = array('fk_paiementfourn' => 0, 'fk_bank' => 0);
 			$sql = "SELECT fk_paiementfourn";
@@ -2708,23 +3033,43 @@ function libeufinconnectorApplyManualTransactionLink($db, LibeufinTransaction $t
 		}
 	} elseif ($linkCase === 'payment') {
 		if ($targetType === 'payment') {
+			if ($transaction->direction === LibeufinTransaction::DIRECTION_INCOMING) {
+				$paymentData = libeufinconnectorEnsureExistingPaymentBankLine($db, $transaction, $targetType, $targetId, $user);
+				if (empty($paymentData['ok'])) {
+					return array('ok' => false, 'status' => $paymentData['status'], 'error' => $paymentData['error']);
+				}
+				$resolved = array_merge($resolved, $paymentData);
+			} else {
 			$paymentData = libeufinconnectorResolveCustomerPaymentLinks($db, $targetId);
 			if ((int) $paymentData['fk_bank'] <= 0) {
 				$paymentData['fk_bank'] = (int) $resolved['fk_bank'];
 			}
 			$resolved = array_merge($resolved, $paymentData);
+			}
 		} elseif ($targetType === 'payment_supplier') {
+			if ($transaction->direction === LibeufinTransaction::DIRECTION_INCOMING) {
+				$paymentData = libeufinconnectorEnsureExistingPaymentBankLine($db, $transaction, $targetType, $targetId, $user);
+				if (empty($paymentData['ok'])) {
+					return array('ok' => false, 'status' => $paymentData['status'], 'error' => $paymentData['error']);
+				}
+				$resolved = array_merge($resolved, $paymentData);
+			} else {
 			$paymentData = libeufinconnectorResolveSupplierPaymentLinks($db, $targetId);
 			if ((int) $paymentData['fk_bank'] <= 0) {
 				$paymentData['fk_bank'] = (int) $resolved['fk_bank'];
 			}
 			$resolved = array_merge($resolved, $paymentData);
+			}
 		} else {
 			return array('ok' => false, 'status' => 'bad_target_type', 'error' => 'The selected object is not a payment.');
 		}
 	} elseif ($linkCase === 'bank') {
 		if ($targetType !== 'bank') {
 			return array('ok' => false, 'status' => 'bad_target_type', 'error' => 'The selected object is not a bank line.');
+		}
+		$availability = libeufinconnectorAssertNativeLinkAvailable($db, $transaction, 'fk_bank', $targetId);
+		if (empty($availability['ok'])) {
+			return array('ok' => false, 'status' => $availability['status'], 'error' => $availability['error']);
 		}
 		$resolved = array_merge($resolved, libeufinconnectorResolveBankLineLinks($db, $targetId));
 	} else {
@@ -2747,9 +3092,19 @@ function libeufinconnectorApplyManualTransactionLink($db, LibeufinTransaction $t
 	if ($update <= 0) {
 		return array('ok' => false, 'status' => 'transaction_update_failed', 'error' => $transaction->error);
 	}
+	libeufinconnectorClearTransactionObjectLinks($db, $transaction);
 	libeufinconnectorEnsureTransactionObjectLinks($db, $transaction, $user);
 
-	return array('ok' => true, 'status' => 'linked', 'error' => '');
+	return array(
+		'ok' => true,
+		'status' => 'linked',
+		'error' => '',
+		'fk_bank' => (int) $transaction->fk_bank,
+		'fk_paiement' => (int) $transaction->fk_paiement,
+		'fk_paiementfourn' => (int) $transaction->fk_paiementfourn,
+		'fk_facture' => (int) $transaction->fk_facture,
+		'fk_facture_fourn' => (int) $transaction->fk_facture_fourn,
+	);
 }
 
 /**
@@ -2996,10 +3351,19 @@ function libeufinconnectorCreateIncomingCustomerPayment($db, LibeufinTransaction
 		return array('ok' => false, 'status' => 'bad_direction', 'error' => 'Only incoming transactions can create customer payments.', 'payment_id' => 0, 'bank_id' => 0, 'invoice_id' => 0);
 	}
 	if ((int) $transaction->fk_paiement > 0) {
-		return array('ok' => true, 'status' => 'already_imported', 'error' => '', 'payment_id' => (int) $transaction->fk_paiement, 'bank_id' => (int) $transaction->fk_bank, 'invoice_id' => (int) $transaction->fk_facture);
+		if (libeufinconnectorFindOtherTransactionUsingNativeLink($db, $transaction, 'fk_paiement', (int) $transaction->fk_paiement) > 0) {
+			$transaction->fk_paiement = 0;
+			$transaction->fk_bank = 0;
+		} else {
+			return array('ok' => true, 'status' => 'already_imported', 'error' => '', 'payment_id' => (int) $transaction->fk_paiement, 'bank_id' => (int) $transaction->fk_bank, 'invoice_id' => (int) $transaction->fk_facture);
+		}
 	}
 	if ((int) $transaction->fk_bank > 0) {
-		return array('ok' => false, 'status' => 'existing_bank_line', 'error' => 'A bank line already exists for this transaction. Match the invoice without auto-creating a customer payment.', 'payment_id' => 0, 'bank_id' => (int) $transaction->fk_bank, 'invoice_id' => 0);
+		if (libeufinconnectorFindOtherTransactionUsingNativeLink($db, $transaction, 'fk_bank', (int) $transaction->fk_bank) > 0) {
+			$transaction->fk_bank = 0;
+		} else {
+			return array('ok' => false, 'status' => 'existing_bank_line', 'error' => 'A bank line already exists for this transaction. Match the invoice without auto-creating a customer payment.', 'payment_id' => 0, 'bank_id' => (int) $transaction->fk_bank, 'invoice_id' => 0);
+		}
 	}
 
 	require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
@@ -3008,6 +3372,9 @@ function libeufinconnectorCreateIncomingCustomerPayment($db, LibeufinTransaction
 	$invoice = new Facture($db);
 	if ($invoice->fetch((int) $invoiceId) <= 0) {
 		return array('ok' => false, 'status' => 'invoice_not_found', 'error' => $invoice->error, 'payment_id' => 0, 'bank_id' => 0, 'invoice_id' => 0);
+	}
+	if ((int) $invoice->type === Facture::TYPE_CREDIT_NOTE) {
+		return array('ok' => false, 'status' => 'bad_invoice_type', 'error' => 'Incoming customer payments must be linked to customer invoices, not customer credit notes.', 'payment_id' => 0, 'bank_id' => 0, 'invoice_id' => 0);
 	}
 
 	$invoiceReceivingAccount = libeufinconnectorGetInvoiceReceivingAccountData($db, $invoice);
@@ -3079,6 +3446,7 @@ function libeufinconnectorCreateIncomingCustomerPayment($db, LibeufinTransaction
 	if ($update <= 0) {
 		return array('ok' => false, 'status' => 'transaction_update_failed', 'error' => $transaction->error, 'payment_id' => (int) $paymentId, 'bank_id' => (int) $bankId, 'invoice_id' => (int) $invoice->id);
 	}
+	libeufinconnectorClearTransactionObjectLinks($db, $transaction);
 	libeufinconnectorEnsureTransactionObjectLinks($db, $transaction, $user);
 
 	return array('ok' => true, 'status' => 'created', 'error' => '', 'payment_id' => (int) $paymentId, 'bank_id' => (int) $bankId, 'invoice_id' => (int) $invoice->id);
@@ -3102,7 +3470,17 @@ function libeufinconnectorCreateIncomingSupplierRefundPayment($db, LibeufinTrans
 		return array('ok' => false, 'status' => 'bad_direction', 'error' => 'Only incoming transactions can create supplier refund payments.', 'payment_id' => 0, 'bank_id' => 0, 'invoice_id' => 0);
 	}
 	if ((int) $transaction->fk_paiementfourn > 0) {
-		return array('ok' => true, 'status' => 'already_imported', 'error' => '', 'payment_id' => (int) $transaction->fk_paiementfourn, 'bank_id' => (int) $transaction->fk_bank, 'invoice_id' => (int) $transaction->fk_facture_fourn);
+		if (libeufinconnectorFindOtherTransactionUsingNativeLink($db, $transaction, 'fk_paiementfourn', (int) $transaction->fk_paiementfourn) > 0) {
+			$transaction->fk_paiementfourn = 0;
+			$transaction->fk_bank = 0;
+			$existingBankId = 0;
+		} else {
+			return array('ok' => true, 'status' => 'already_imported', 'error' => '', 'payment_id' => (int) $transaction->fk_paiementfourn, 'bank_id' => (int) $transaction->fk_bank, 'invoice_id' => (int) $transaction->fk_facture_fourn);
+		}
+	}
+	if ($existingBankId > 0 && libeufinconnectorFindOtherTransactionUsingNativeLink($db, $transaction, 'fk_bank', $existingBankId) > 0) {
+		$transaction->fk_bank = 0;
+		$existingBankId = 0;
 	}
 
 	require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
@@ -3113,6 +3491,9 @@ function libeufinconnectorCreateIncomingSupplierRefundPayment($db, LibeufinTrans
 	$invoice = new FactureFournisseur($db);
 	if ($invoice->fetch((int) $invoiceId) <= 0) {
 		return array('ok' => false, 'status' => 'invoice_not_found', 'error' => $invoice->error, 'payment_id' => 0, 'bank_id' => 0, 'invoice_id' => 0);
+	}
+	if ((int) $invoice->type !== FactureFournisseur::TYPE_CREDIT_NOTE) {
+		return array('ok' => false, 'status' => 'bad_invoice_type', 'error' => 'Incoming supplier refunds must be linked to supplier credit notes.', 'payment_id' => 0, 'bank_id' => 0, 'invoice_id' => 0);
 	}
 
 	$invoiceReceivingAccount = libeufinconnectorGetSupplierInvoiceReceivingAccountData($db, $invoice);
@@ -3206,6 +3587,7 @@ function libeufinconnectorCreateIncomingSupplierRefundPayment($db, LibeufinTrans
 	if ($update <= 0) {
 		return array('ok' => false, 'status' => 'transaction_update_failed', 'error' => $transaction->error, 'payment_id' => (int) $paymentId, 'bank_id' => (int) $bankId, 'invoice_id' => (int) $invoice->id);
 	}
+	libeufinconnectorClearTransactionObjectLinks($db, $transaction);
 	libeufinconnectorEnsureTransactionObjectLinks($db, $transaction, $user);
 
 	return array('ok' => true, 'status' => 'created', 'error' => '', 'payment_id' => (int) $paymentId, 'bank_id' => (int) $bankId, 'invoice_id' => (int) $invoice->id);
@@ -3253,6 +3635,7 @@ function libeufinconnectorApplyIncomingInvoiceMatch($db, LibeufinTransaction $tr
 		if ($update <= 0) {
 			return array('ok' => false, 'status' => 'transaction_update_failed', 'error' => $transaction->error, 'invoice_id' => 0, 'supplier_invoice_id' => 0, 'payment_id' => 0, 'bank_id' => 0, 'candidate_ids' => array());
 		}
+		libeufinconnectorClearTransactionObjectLinks($db, $transaction);
 		libeufinconnectorEnsureTransactionObjectLinks($db, $transaction, $user);
 
 		return array('ok' => true, 'status' => 'matched', 'error' => '', 'invoice_id' => (int) $match['invoice_id'], 'supplier_invoice_id' => 0, 'payment_id' => (int) $transaction->fk_paiement, 'bank_id' => (int) $transaction->fk_bank, 'candidate_ids' => array((int) $match['invoice_id']));

@@ -93,3 +93,72 @@ function libeufinconnectorAdminPrepareHead()
 
 	return $head;
 }
+
+/**
+ * Check whether tutorial/demo tools are globally enabled.
+ *
+ * @return bool
+ */
+function libeufinconnectorTutorialEnabled()
+{
+	return (bool) getDolGlobalInt('LIBEUFINCONNECTOR_TUTORIAL_ENABLE');
+}
+
+/**
+ * Check whether a user may access tutorial/demo tools.
+ *
+ * @param User $user User to check
+ * @return bool
+ */
+function libeufinconnectorCanUseTutorial($user)
+{
+	return libeufinconnectorTutorialEnabled()
+		&& is_object($user)
+		&& method_exists($user, 'hasRight')
+		&& $user->hasRight('libeufinconnector', 'tutorial', 'use');
+}
+
+/**
+ * Return a standard Dolibarr object link using the object's getNomUrl method.
+ *
+ * @param DoliDB $db Database handler
+ * @param string $type Object type
+ * @param int $id Object id
+ * @param int $withpicto 0=No picto, 1=Include picto, 2=Only picto
+ * @return string
+ */
+function libeufinconnectorGetDolibarrObjectNomUrl($db, $type, $id, $withpicto = 1)
+{
+	$id = (int) $id;
+	if ($id <= 0) {
+		return '';
+	}
+
+	if ($type === 'bank') {
+		require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
+		$object = new AccountLine($db);
+	} elseif ($type === 'payment') {
+		require_once DOL_DOCUMENT_ROOT.'/compta/paiement/class/paiement.class.php';
+		$object = new Paiement($db);
+	} elseif ($type === 'supplier_payment') {
+		require_once DOL_DOCUMENT_ROOT.'/fourn/class/paiementfourn.class.php';
+		$object = new PaiementFourn($db);
+	} elseif ($type === 'invoice') {
+		require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
+		$object = new Facture($db);
+	} elseif ($type === 'supplier_invoice') {
+		require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
+		$object = new FactureFournisseur($db);
+	} elseif ($type === 'transfer_order') {
+		require_once DOL_DOCUMENT_ROOT.'/compta/prelevement/class/bonprelevement.class.php';
+		$object = new BonPrelevement($db);
+	} else {
+		return '';
+	}
+
+	if ($object->fetch($id) <= 0) {
+		return '';
+	}
+
+	return $object->getNomUrl($withpicto);
+}

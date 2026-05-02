@@ -436,28 +436,40 @@ if (empty($rows)) {
 			$currentBeneficiaryBankAccountId = (int) $dolibarrPayload['fk_societe_rib'];
 		}
 		if ((int) $row->fk_bank > 0) {
-			$bankUrl = dol_buildpath('/compta/bank/line.php?rowid='.((int) $row->fk_bank), 1);
-			$links[] = '<a class="nowraponall" href="'.$bankUrl.'">'.img_object($langs->trans('Bank'), 'payment').' '.$langs->trans('Bank').' #'.((int) $row->fk_bank).'</a>';
+			$bankLink = libeufinconnectorGetDolibarrObjectNomUrl($db, 'bank', (int) $row->fk_bank, 1);
+			if ($bankLink !== '') {
+				$links[] = '<span class="nowraponall">'.$bankLink.'</span>';
+			}
 		}
 		if ((int) $row->fk_paiement > 0) {
-			$paymentUrl = dol_buildpath('/compta/paiement/card.php?id='.((int) $row->fk_paiement), 1);
-			$links[] = '<a class="nowraponall" href="'.$paymentUrl.'">'.img_object($langs->trans('Payment'), 'payment').' '.$langs->trans('Payment').' #'.((int) $row->fk_paiement).'</a>';
+			$paymentLink = libeufinconnectorGetDolibarrObjectNomUrl($db, 'payment', (int) $row->fk_paiement, 1);
+			if ($paymentLink !== '') {
+				$links[] = '<span class="nowraponall">'.$paymentLink.'</span>';
+			}
 		}
 		if ((int) $row->fk_paiementfourn > 0) {
-			$supplierPaymentUrl = dol_buildpath('/fourn/paiement/card.php?id='.((int) $row->fk_paiementfourn), 1);
-			$links[] = '<a class="nowraponall" href="'.$supplierPaymentUrl.'">'.img_object($langs->trans('SupplierPayment'), 'payment').' '.$langs->trans('SupplierPayment').' #'.((int) $row->fk_paiementfourn).'</a>';
+			$supplierPaymentLink = libeufinconnectorGetDolibarrObjectNomUrl($db, 'supplier_payment', (int) $row->fk_paiementfourn, 1);
+			if ($supplierPaymentLink !== '') {
+				$links[] = '<span class="nowraponall">'.$supplierPaymentLink.'</span>';
+			}
 		}
 		if ((int) $row->fk_facture > 0) {
-			$invoiceUrl = dol_buildpath('/compta/facture/card.php?id='.((int) $row->fk_facture), 1);
-			$links[] = '<a class="nowraponall" href="'.$invoiceUrl.'">'.img_object($langs->trans('Invoice'), 'bill').' '.$langs->trans('Invoice').' #'.((int) $row->fk_facture).'</a>';
+			$invoiceLink = libeufinconnectorGetDolibarrObjectNomUrl($db, 'invoice', (int) $row->fk_facture, 1);
+			if ($invoiceLink !== '') {
+				$links[] = '<span class="nowraponall">'.$invoiceLink.'</span>';
+			}
 		}
 		if ((int) $row->fk_facture_fourn > 0) {
-			$supplierInvoiceUrl = dol_buildpath('/fourn/facture/card.php?facid='.((int) $row->fk_facture_fourn), 1);
-			$links[] = '<a class="nowraponall" href="'.$supplierInvoiceUrl.'">'.img_object($langs->trans('SupplierInvoice'), 'bill').' '.$langs->trans('SupplierInvoice').' #'.((int) $row->fk_facture_fourn).'</a>';
+			$supplierInvoiceLink = libeufinconnectorGetDolibarrObjectNomUrl($db, 'supplier_invoice', (int) $row->fk_facture_fourn, 1);
+			if ($supplierInvoiceLink !== '') {
+				$links[] = '<span class="nowraponall">'.$supplierInvoiceLink.'</span>';
+			}
 		}
 		if ((int) $row->fk_prelevement_bons > 0) {
-			$transferOrderUrl = dol_buildpath('/compta/prelevement/card.php?id='.((int) $row->fk_prelevement_bons), 1);
-			$links[] = '<a class="nowraponall" href="'.$transferOrderUrl.'">'.img_object($langs->trans('Payment'), 'payment').' '.$langs->trans('LibeufinConnectorTransactionTransferOrder').' #'.((int) $row->fk_prelevement_bons).'</a>';
+			$transferOrderLink = libeufinconnectorGetDolibarrObjectNomUrl($db, 'transfer_order', (int) $row->fk_prelevement_bons, 1);
+			if ($transferOrderLink !== '') {
+				$links[] = '<span class="nowraponall">'.$transferOrderLink.'</span>';
+			}
 		}
 		$selectable = (
 			$row->direction === LibeufinTransaction::DIRECTION_OUTGOING
